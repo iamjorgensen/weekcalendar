@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# venvs and local env
+venv/
+.venv/
+.venv*/
+.env
+.env.*
+
+# vendor and hardware libs
+vendor/
+e-Paper/
+
+# secrets & outputs
+dokkveien-*.json
+*.json
+output.jpg
+*.log
+nohup.out
+
+# OS
+.DS_Store
+Thumbs.db
