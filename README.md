@@ -1,5 +1,7 @@
 # Family E-Ink Calendar Display
 
+!output.jpg
+
 This project is designed to create a family-friendly weekly calendar display on a 7.3" Inky frame e-ink screen. The calendar aggregates events from multiple sources—like your shared family Google Calendar, Norwegian public holidays, local renovation schedules, and even weather data—and displays them in a visually intuitive format.
 
 ## Data Sources
@@ -26,6 +28,3 @@ The Inky frame wakes up, makes an API call to the Raspberry Pi to get the latest
 - **render_calendar.py**: Once the data is gathered and normalized, this script handles generating the actual calendar image. It uses a graphics library, like Pillow, to draw the weekly calendar, lay out the icons, and format everything into a final image that the Inky frame can display.
 - **server.py**: This is the script that runs a lightweight web server on the Raspberry Pi. It provides an API endpoint that the Inky frame can call to request the latest calendar image, and it triggers the rendering process whenever a refresh is needed.
 
----
-
-And that's it! Just use the hash symbols for headers (one `#` for top-level, two `##` for sub-headers) and dashes or asterisks for bullet points. Let me know if you need any more help!
