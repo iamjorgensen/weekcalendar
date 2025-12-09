@@ -5,7 +5,7 @@
 This project is designed to create a family-friendly weekly calendar display on a 7.3" Inky frame e-ink 6 color screen from  Pimoroni (https://shop.pimoroni.com/products/inky-impression-7-3?variant=55186435244411). The calendar aggregates events from multiple sources—like your shared family Google Calendar, Norwegian public holidays, local renovation schedules, and even weather data—and displays them in a visually intuitive format. Since the Inky Frame processing is very lightweight the screen can refresh for a long time on just batteries - put in a Ikea frame on a shelf in the kitchen for all to see. 
 
 ## Developer disclaimer
-Note that the developer of this project is ChatGPT and some parts Gemini. I have only been advising and instructing the ai-models on the way to the final solution. Hence going into details there are probably parts of this code oeverly complicated - there are "fallback" code snippets around that could have been removed +++ I am sure a skilled developer could have done the same with 50% of the code...but to me that was not an option. Not do I have the knowledge and not do I have the time :) 
+Note that the developer of this project is ChatGPT and some parts Gemini. I have only been advising and instructing the ai-models on the way to the final solution. Hence going into details there are probably parts of this code way too complicated - there are "fallback" code snippets around that could have been removed +++ I am sure a skilled developer could have done the same with 50% of the code...but to me that was not an option. Not do I have the knowledge and not do I have the time :) 
 
 ## Data Sources
 
