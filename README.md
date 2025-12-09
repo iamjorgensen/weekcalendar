@@ -11,6 +11,7 @@ This project is designed to create a family-friendly weekly calendar display on 
 - **Weather Data**: Integrates with Norwegian weather services to show the forecast for the week.
 - **Renovation Schedule (Movar)**: Displays which type of waste collection happens on which days.
 - **Google Sheet Mapping**: A mapping sheet that lets you turn event titles into icons or specific tags for each family member.
+  ![Example of mappings](Snap of inky event mappings Google Sheet.png)
 
 ## Hardware Setup
 
