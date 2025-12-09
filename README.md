@@ -2,7 +2,7 @@
 
 ![WeekCalendar Preview](output.jpg)
 
-This project is designed to create a family-friendly weekly calendar display on a 7.3" Inky frame e-ink screen. The calendar aggregates events from multiple sources—like your shared family Google Calendar, Norwegian public holidays, local renovation schedules, and even weather data—and displays them in a visually intuitive format.
+This project is designed to create a family-friendly weekly calendar display on a 7.3" Inky frame e-ink 6 color screen from  Pimoroni (https://shop.pimoroni.com/products/inky-impression-7-3?variant=55186435244411). The calendar aggregates events from multiple sources—like your shared family Google Calendar, Norwegian public holidays, local renovation schedules, and even weather data—and displays them in a visually intuitive format. Since the Inky Frame processing is very lightweight the screen can refresh for a long time on just batteries - put in a Ikea frame on a shelf in the kitchen for all to see. 
 
 ## Data Sources
 
