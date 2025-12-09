@@ -10,10 +10,8 @@ This project is designed to create a family-friendly weekly calendar display on 
 - **Norwegian Public Holidays**: Adds local holidays so everyone knows when there's a day off.
 - **Weather Data**: Integrates with Norwegian weather services to show the forecast for the week.
 - **Renovation Schedule (Movar)**: Displays which type of waste collection happens on which days.
-- **Google Sheet Mapping**: A mapping sheet that lets you turn event titles into icons or specific tags for each family member. ![Example of mappings](Snap of inky event mappings Google Sheet.png)
-
+- **Google Sheet Mapping**: A mapping sheet that lets you turn event titles into icons or specific tags for each family member.
   
-
 ## Hardware Setup
 
 - **Inky Frame 7.3"**: Runs MicroPython, wakes up every 12 hours to refresh the display.
@@ -30,3 +28,5 @@ The Inky frame wakes up, makes an API call to the Raspberry Pi to get the latest
 - **render_calendar.py**: Once the data is gathered and normalized, this script handles generating the actual calendar image. It uses a graphics library, like Pillow, to draw the weekly calendar, lay out the icons, and format everything into a final image that the Inky frame can display.
 - **server.py**: This is the script that runs a lightweight web server on the Raspberry Pi. It provides an API endpoint that the Inky frame can call to request the latest calendar image, and it triggers the rendering process whenever a refresh is needed.
 
+
+![Example of mappings](Snap of inky event mappings Google Sheet.png)
