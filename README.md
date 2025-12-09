@@ -33,10 +33,11 @@ This is a crucial part of the setup and enables me to on the fly add new mapping
 ![Event mappings](example_inkyframe_event_mappings.jpg)
 
 Some modes have been created
-- **replace_icon**: This takes the whole keyword from my calendar event title, removes it, and replaces it with the icon. 
+- **replace_icon**: This takes the whole keyword from my calendar event title, removes it, and replaces it with the icon. If the calendar event title after replacements are empty - it will not show at all. An example - I have adaily  recurring "dinner: --> Middag:" tag in my google calendar. If I go in an edit a day changing it to "Middag: Pasta Carbonara" - the code will replace "Middag:" with a food icon and only show "Pasta Carbonara"
+- **replace_text**: Replaces the text in the keyword with a colored tag.
+- **replace_all**: Replaces the text AND adds an icon, 
 - **add_all**: Leaves the text untouched and adds both the icon and the tag. Tag can be colored as the inkyframe supports 6 different colors.
 - **add_icon**: Leaves the text untouched and adds the icon
 - **add_text**: Leaves the text untouched and adds the text as a colored tag
 
-
-
+Combinations of these mappings will also work - apart from Icon - here it will choose the first icon it finds in the mapping table. So an example from my output.jpg - in Google calendar I have an event "Oslo - Tom Waitz Christian". The code is adding the "city" icon based on "Oslo" being in the title - in addition it replaces "Christian" and puts a black "C" tag on it to show who this event is concerning...pretty neat :) 
