@@ -1,4 +1,4 @@
-Family E-Ink Calendar Display
+# Family E-Ink Calendar Display
 
 This project is designed to create a family-friendly weekly calendar display on a 7.3" Inky frame e-ink screen. The calendar aggregates events from multiple sources—like your shared family Google Calendar, Norwegian public holidays, local renovation schedules, and even weather data—and displays them in a visually intuitive format.
 
