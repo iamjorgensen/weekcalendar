@@ -32,7 +32,7 @@ The Inky frame wakes up, makes an API call to the Raspberry Pi to get the latest
 
 ## The Event mappings
 This is a crucial part of the setup and enables me to on the fly add new mappings if there are new events that I would like to tag or present a nice icpn to 
-![Event mappings](example_inkyframe_event_mappings.jpg)
+![Event mappings](/readme_supportfiles/example_inkyframe_event_mappings.jpg)
 
 Some modes have been created
 - **replace_icon**: This takes the whole keyword from my calendar event title, removes it, and replaces it with the icon. If the calendar event title after replacements are empty - it will not show at all. An example - I have adaily  recurring "dinner: --> Middag:" tag in my google calendar. If I go in an edit a day changing it to "Middag: Pasta Carbonara" - the code will replace "Middag:" with a food icon and only show "Pasta Carbonara"
