@@ -43,3 +43,8 @@ Some modes have been created
 - **add_text**: Leaves the text untouched and adds the text as a colored tag
 
 Combinations of these mappings will also work - apart from Icon - here it will choose the first icon it finds in the mapping table. So an example from my output.jpg - in Google calendar I have an event "Oslo - Tom Waitz Christian". The code is adding the "city" icon based on "Oslo" being in the title - in addition it replaces "Christian" and puts a black "C" tag on it to show who this event is concerning...pretty neat :) 
+
+## On the shelf
+![Shelf1](/readme_supportfiles/ontheshelf1.jpg)
+![Shelf2](/readme_supportfiles/ontheshelf2.jpg)
+
