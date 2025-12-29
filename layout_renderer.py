@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageColor
 import os
 import re
 from typing import List, Tuple, Union, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 # Note: Keep the following import for event mapping, as requested.
 from mappings import mapping_info_for_event, color_to_rgb 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
@@ -536,6 +536,10 @@ def _measure_box_height_for_date(events: list,
                                 max_event_lines: int = 3) -> int:
     """Compute total box height required to render a date's events."""
     total = box_header_height + top_padding + bottom_padding
+    # FIX: reserve space for one line when there are no events (for 'Ingen avtaler')
+    if not events:
+        total += event_vspacing
+
 
     if not events:
         return max(min_box_height, total)
@@ -883,7 +887,23 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         data["events"] = events
 
     groups = _group_events_by_date(events)
-    ordered_dates = sorted(groups.keys())[:days]
+    # FIX: always render a continuous date range (including empty days / weekends)
+    if events:
+        try:
+            start_date = min(
+                datetime.fromisoformat(ev["date"]).date()
+                for ev in events
+                if ev.get("date")
+            )
+        except Exception:
+            start_date = datetime.today().date()
+    else:
+        start_date = datetime.today().date()
+
+    ordered_dates = [
+        (start_date + timedelta(days=i)).isoformat()
+        for i in range(days)
+    ]
 
     margin_x = 3
     margin_y = 3

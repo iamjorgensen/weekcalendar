@@ -1425,7 +1425,8 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
                         "icon_color_name": mapped.get("icon_color_name"),
                         "icon_color_rgb": mapped.get("icon_color_rgb"),
                         "icon_mode": mapped.get("mode"),
-                        "original_name": summary, # Keep original summary here
+                        "original_name": summary,
+            "is_holiday": True,  # explicit holiday flag
                     }
                     if not any(e['date'] == ev['date'] and e['name'] == ev['name'] and e.get('time','') == ev['time'] for e in holidays):
                         holidays.append(ev)
@@ -1454,7 +1455,8 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
                             "icon_mode": mapped.get("mode"),
-                            "original_name": summary, # Keep original summary here
+                            "original_name": summary,
+            "is_holiday": True,  # explicit holiday flag
                         }
 
                         if not any(e['date'] == ev['date'] and e['name'] == ev['name'] and e.get('time','') == ev['time'] for e in holidays):
@@ -1485,7 +1487,8 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
                         "icon_color_name": mapped.get("icon_color_name"),
                         "icon_color_rgb": mapped.get("icon_color_rgb"),
                         "icon_mode": mapped.get("mode"),
-                        "original_name": summary, # Keep original summary here
+                        "original_name": summary,
+            "is_holiday": True,  # explicit holiday flag
                     }
 
                     if not any(e['date'] == ev['date'] and e['name'] == ev['name'] and e.get('time','') == ev['time'] for e in holidays):
