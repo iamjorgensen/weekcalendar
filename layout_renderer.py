@@ -888,18 +888,9 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
 
     groups = _group_events_by_date(events)
     # FIX: always render a continuous date range (including empty days / weekends)
-    if events:
-        try:
-            start_date = min(
-                datetime.fromisoformat(ev["date"]).date()
-                for ev in events
-                if ev.get("date")
-            )
-        except Exception:
-            start_date = datetime.today().date()
-    else:
-        start_date = datetime.today().date()
-
+    
+    start_date = datetime.today().date()  
+    
     ordered_dates = [
         (start_date + timedelta(days=i)).isoformat()
         for i in range(days)
@@ -951,16 +942,28 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
 
         header_fill_rect = [hx0, hy0, hx1, hy1]
         
+        day_events = groups.get(date_key, [])
+
+        is_public_holiday = False
+        for ev in day_events:
+            name = (ev.get("name") or ev.get("display_text") or "").lower()
+            if name.startswith("fridag"):
+                is_public_holiday = True
+                break
+
         draw_header_fill = header_fill_rgba
         try:
             dt = datetime.fromisoformat(date_key)
-            if dt.weekday() >= 5: # Saturday (5) or Sunday (6)
+            if dt.weekday() >= 5 or is_public_holiday: # Saturday (5) or Sunday (6)
                 weekend_col = opts.get('weekend_header_fill_color', (255, 0, 0))
                 wf = _normalize_bg(weekend_col)
                 draw_header_fill = (wf[0], wf[1], wf[2], 255)
         except Exception:
             pass
-            
+        # Ensure readable header text on red background
+        if draw_header_fill[:3] != header_fill_rgba[:3]:
+            header_text_rgb = (255, 255, 255)
+
         try:
             draw.rounded_rectangle(header_fill_rect, radius=box_radius, fill=draw_header_fill)
         except Exception:
@@ -1077,13 +1080,22 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
                                         icon_pad_square=icon_pad_square, event_icon_slot=event_icon_slot,
                                         tint_event_icons=tint_event_icons, max_event_lines=max_event_lines)
         else:
-            placeholder = opts.get("no_events_text", "")
+            placeholder = opts.get("no_events_text", "Ingen avtaler")
             if placeholder:
                 draw.text((inner_x, cur_y), placeholder, font=font, fill=body_text_rgb)
 
         if cur_y > max_bottom and show_more_text:
             more_y = max_bottom - getattr(font, "size", 12)
             draw.text((inner_x, more_y), "…", font=font, fill=body_text_rgb)
+
+    # --- SAFETY: force exact Inky resolution ---
+    TARGET_W = 800
+    TARGET_H = 480
+
+    if base.size != (TARGET_W, TARGET_H):
+        fixed = Image.new("RGBA", (TARGET_W, TARGET_H), bg_rgba)
+        fixed.paste(base, (0, 0))
+        base = fixed
 
     return base
 
