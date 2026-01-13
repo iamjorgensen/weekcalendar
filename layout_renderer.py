@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 # Note: Keep the following import for event mapping, as requested.
 from mappings import mapping_info_for_event, color_to_rgb 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
-FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
+FONTS_DIR = os.path.join(ASSETS_DIR, "fonts") 
 ICONS_DIR = os.path.join(ASSETS_DIR, "icons")
 
 DEFAULT_FONT = os.path.join(FONTS_DIR, "Inter.ttf")
