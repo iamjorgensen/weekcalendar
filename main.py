@@ -56,14 +56,19 @@ opts["tint_event_icons"] = True
 
 def save_jpeg_fast(img, out_path="output.jpg"):
     """
-    Minimal, clean conversion from PIL Image → JPEG
-    Ingen palettarbeid, ingen kvantisering – 100% ren konvertering.
+    Optimized for Inky Frame Spectra 7:
+    Forces 100% quality and disables Chroma Subsampling to keep 
+    text edges razor-sharp and prevent color 'bleeding'.
     """
+    # Ensure the image is in RGB mode (required for JPEG)
     img = img.convert("RGB")
-    img.save(out_path, quality=100)
-    print(f"Saved JPEG (simple RGB→JPEG): {out_path}")
+    
+    # quality=100: Prevents compression artifacts (shadings)
+    # subsampling=0: The 'Secret Sauce' that stops color bleeding/blurring
+    img.save(out_path, "JPEG", quality=100, subsampling=0)
+    
+    print(f"Saved Ultra-Crisp JPEG: {out_path}")
     return out_path
-
 
 # save_spritesheet and finalize_image_for_inky related functions are removed.
 

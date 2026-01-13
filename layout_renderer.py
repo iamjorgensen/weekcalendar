@@ -1097,6 +1097,32 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         fixed.paste(base, (0, 0))
         base = fixed
 
+        # --- SPECTRA 7 SHARPNESS FIX ---
+        # Convert to RGB first to drop the Alpha channel
+        base = base.convert("RGB")
+        
+        # Define the 7 hardware ink colors
+        # Black, White, Green, Blue, Red, Yellow, Orange
+        inky_palette = [
+            0, 0, 0,       # Black
+            255, 255, 255, # White
+            0, 255, 0,     # Green
+            0, 0, 255,     # Blue
+            255, 0, 0,     # Red
+            255, 255, 0,   # Yellow
+            255, 165, 0    # Orange
+        ]
+        # Pad to 256 colors for PIL compatibility
+        inky_palette += [0] * (768 - len(inky_palette))
+
+        # Create a palette template image
+        palette_im = Image.new("P", (1, 1))
+        palette_im.putpalette(inky_palette)
+
+        # QUANTIZE: This is the magic line. 
+        # dither=0 (or Image.Dither.NONE) turns off the shading/blurring.
+        base = base.quantize(palette=palette_im, dither=0).convert("RGB")
+        # -------------------------------
     return base
 
 # Removed helper function make_mockup_with_bezel as it was outside core calendar rendering.
