@@ -76,12 +76,15 @@ def _deg_to_cardinal(deg: float) -> str:
 
 
 def _ensure_font(path: str, size: int):
-    """Load a truetype font, or fall back to a reasonable default."""
     try:
         if path and os.path.isfile(path):
-            return ImageFont.truetype(path, int(size))
+            font = ImageFont.truetype(path, int(size))
+            # ADD THIS LINE: It forces the font to snap to pixels
+            font.set_variation_by_name('Regular') 
+            return font
     except Exception:
         pass
+    # ... rest of your existing function
     try:
         if 'DEFAULT_FONT' in globals() and DEFAULT_FONT and os.path.isfile(DEFAULT_FONT):
             return ImageFont.truetype(DEFAULT_FONT, int(size))
@@ -795,11 +798,10 @@ def render_events_section(image: Image.Image, x: int, y: int, width: int, events
 
     return cursor_y
 
-
 def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer_opts: dict = None):
     opts = renderer_opts or {}
 
-    # options
+    # Standard options
     border_thickness = int(opts.get("border_thickness", 2))
     round_radius = int(opts.get("round_radius", 6))
     underline_date = bool(opts.get("underline_date", False))
@@ -820,7 +822,6 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     top_padding = int(opts.get("box_top_padding", 8))
     bottom_padding = int(opts.get("box_bottom_padding", 8))
 
-    # event icon slot width (pixels)
     event_icon_slot = int(opts.get("event_icon_slot", 20))
     icon_pad_square = bool(opts.get("icon_pad_square", True))
     tint_event_icons = bool(opts.get("tint_event_icons", True))
@@ -834,7 +835,6 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     text_color_opt = opts.get("text_color", None)
     default_text_color_raw = text_color_opt if text_color_opt is not None else (0 if lum > 0.5 else 255)
 
-    # normalize colors
     header_fill_raw = opts.get("header_fill_color", (255, 153, 0))
     header_text_raw = opts.get("header_text_color", None)
     if header_text_raw is None:
@@ -849,9 +849,6 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     body_text_rgb = _normalize_color_input(body_text_raw)
     dot_rgb = _normalize_color_input(dot_color)
 
-    # expose for fallback glyph
-    globals()["box_outline_rgb"] = box_outline_rgb
-
     base = Image.new("RGBA", (width, height), color=bg_rgba)
     draw = ImageDraw.Draw(base)
     
@@ -861,19 +858,15 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     bold_font = _ensure_font(bold_font_path, font_bold_size)
     small_font = _ensure_font(font_path, font_small_size)
 
-    # Initialize weather_tag_font (used for tags/weather text)
     weather_tag_font = small_font
-    
     events = data.get("events", []) or []
 
-    # Apply mapping if available (Kept as requested)
     if callable(apply_event_mapping):
         mapped_events = []
         for ev in events:
             ev_copy = dict(ev)
             if not ev_copy.get("tags"):
                 try:
-                    # Defensive check for name existence before calling mapping
                     event_name = ev_copy.get("name", "") if ev_copy.get("name") is not None else ""
                     mapped = apply_event_mapping(event_name)
                 except Exception:
@@ -887,8 +880,6 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         data["events"] = events
 
     groups = _group_events_by_date(events)
-    # FIX: always render a continuous date range (including empty days / weekends)
-    
     start_date = datetime.today().date()  
     
     ordered_dates = [
@@ -896,11 +887,9 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         for i in range(days)
     ]
 
-    margin_x = 3
-    margin_y = 3
-    gap = grid_gap
+    margin_x, margin_y, gap = 3, 3, grid_gap
     box_w = (width - margin_x * 2 - (columns - 1) * gap) // columns
-    inner_w = box_w - 16 # Available width for text content
+    inner_w = box_w - 16
 
     date_heights = {}
     for d in ordered_dates:
@@ -914,9 +903,8 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     placements = {}
     col_width = box_w
     col_x_positions = [margin_x + c * (col_width + gap) for c in range(columns)]
-    bottom_limit = height - 3
+    bottom_limit, current_col = height - 3, 0
     col_tops = [margin_y for _ in range(columns)]
-    current_col = 0
 
     for d in ordered_dates:
         h = date_heights[d]
@@ -924,205 +912,131 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         for col_try in range(current_col, columns):
             if col_tops[col_try] + h <= bottom_limit:
                 current_col = col_try
-                x = col_x_positions[current_col]
-                y = col_tops[current_col]
+                x, y = col_x_positions[current_col], col_tops[current_col]
                 placements[d] = (x, y, h)
                 col_tops[current_col] = y + h + gap
                 placed = True
                 break
-
-        if not placed:
-            continue # skip if no room left
+        if not placed: continue
 
     for date_key, (x, y, box_h) in placements.items():
-        hx0 = x + border_thickness
-        hy0 = y + border_thickness
-        hx1 = x + box_w - border_thickness
-        hy1 = y + box_header_height
-
+        hx0, hy0 = x + border_thickness, y + border_thickness
+        hx1, hy1 = x + box_w - border_thickness, y + box_header_height
         header_fill_rect = [hx0, hy0, hx1, hy1]
-        
         day_events = groups.get(date_key, [])
 
-        is_public_holiday = False
-        for ev in day_events:
-            name = (ev.get("name") or ev.get("display_text") or "").lower()
-            if name.startswith("fridag"):
-                is_public_holiday = True
-                break
-
+        is_public_holiday = any((ev.get("name") or "").lower().startswith("fridag") for ev in day_events)
         draw_header_fill = header_fill_rgba
         try:
             dt = datetime.fromisoformat(date_key)
-            if dt.weekday() >= 5 or is_public_holiday: # Saturday (5) or Sunday (6)
+            if dt.weekday() >= 5 or is_public_holiday:
                 weekend_col = opts.get('weekend_header_fill_color', (255, 0, 0))
                 wf = _normalize_bg(weekend_col)
                 draw_header_fill = (wf[0], wf[1], wf[2], 255)
-        except Exception:
-            pass
-        # Ensure readable header text on red background
+        except Exception: pass
+        
         if draw_header_fill[:3] != header_fill_rgba[:3]:
             header_text_rgb = (255, 255, 255)
 
-        try:
-            draw.rounded_rectangle(header_fill_rect, radius=box_radius, fill=draw_header_fill)
-        except Exception:
-            draw.rectangle(header_fill_rect, fill=draw_header_fill)
+        try: draw.rounded_rectangle(header_fill_rect, radius=box_radius, fill=draw_header_fill)
+        except Exception: draw.rectangle(header_fill_rect, fill=draw_header_fill)
 
-        try:
-            # Draw header outline (slightly larger to cover main box border)
-            draw.rounded_rectangle([x + 1, y + 1, x + box_w - 1, y + box_header_height + 1], radius=box_radius, outline=box_outline_rgb, width=border_thickness, fill=None)
-        except Exception:
-            draw.rectangle([x, y, x + box_w, y + box_header_height], outline=box_outline_rgb, width=border_thickness)
+        try: draw.rounded_rectangle([x + 1, y + 1, x + box_w - 1, y + box_header_height + 1], radius=box_radius, outline=box_outline_rgb, width=border_thickness, fill=None)
+        except Exception: draw.rectangle([x, y, x + box_w, y + box_header_height], outline=box_outline_rgb, width=border_thickness)
 
-        # Draw full box outline
-        try:
-            draw.rounded_rectangle([x, y, x + box_w, y + box_h], radius=box_radius,
-                                outline=box_outline_rgb, width=border_thickness, fill=None)
-        except Exception:
-            draw.rectangle([x, y, x + box_w, y + box_h], outline=box_outline_rgb, width=border_thickness)
+        try: draw.rounded_rectangle([x, y, x + box_w, y + box_h], radius=box_radius, outline=box_outline_rgb, width=border_thickness, fill=None)
+        except Exception: draw.rectangle([x, y, x + box_w, y + box_h], outline=box_outline_rgb, width=border_thickness)
 
-        # Format date
         pretty = date_key
         try:
             dt = datetime.fromisoformat(date_key)
             wk = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"]
             months = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
             pretty = f"{wk[dt.weekday()]} {dt.day} {months[dt.month - 1]}"
-        except Exception:
-            pass
+        except Exception: pass
         draw.text((x + box_header_padding, y + 3), pretty, font=bold_font, fill=header_text_rgb)
 
-        # Weather Info
         weather_entry = next((w for w in data.get("weather", []) if w.get("date") == date_key), None)
-
         if weather_entry:
             icon, temp_text, precip_text, wind_text, wind_dir = _gather_weather_values(weather_entry)
+            small_icon_size, gap_between_parts, right_x = 16, 10, x + box_w - box_header_padding
 
-            small_icon_size = 16
-            gap_between_parts = 10
-            right_x = x + box_w - box_header_padding
-
-            # Helper to draw icon+text right-aligned, returns new right_x
             def _draw_icon_and_text_right(icon_key, text, r_x, y_top, icon_h, font_for_text):
-                if not text:
-                    return r_x
+                if not text: return r_x
                 p_w = _text_width(draw, text, font_for_text)
                 icon_im = _load_icon_image(icon_key, icon_h, icon_manager=opts.get("icon_manager"))
                 text_x = r_x - p_w
-
-                min_x_for_text = x + box_header_padding + _text_width(draw, pretty, bold_font) + 8
-                if text_x < min_x_for_text:
-                    return r_x # No space
-
+                min_x = x + box_header_padding + _text_width(draw, pretty, bold_font) + 8
+                if text_x < min_x: return r_x
                 if icon_im:
-                    icon_prepared = _resize_to_height_and_pad(icon_im, icon_h, pad_square=True)
-                    icon_tinted = _tint_icon_to_color(icon_prepared, header_text_rgb)
-                    iw, ih = icon_tinted.size
+                    icon_prep = _resize_to_height_and_pad(icon_im, icon_h, pad_square=True)
+                    icon_tint = _tint_icon_to_color(icon_prep, header_text_rgb)
+                    iw, ih = icon_tint.size
                     icon_x = text_x - iw - 6
-                    
-                    if icon_x < min_x_for_text:
+                    if icon_x < min_x:
                         draw.text((text_x, y + 6), text, font=font_for_text, fill=header_text_rgb)
                         return text_x - gap_between_parts
-                    
-                    icon_y = y + ((box_header_height - ih) // 2)
-                    base.paste(icon_tinted, (icon_x, icon_y), icon_tinted)
-                    draw.text((text_x, y + 6), text, font=font_for_text, fill=header_text_rgb)
-                    return icon_x - gap_between_parts
-                else:
-                    draw.text((text_x, y + 6), text, font=font_for_text, fill=header_text_rgb)
-                    return text_x - gap_between_parts
+                    base.paste(icon_tint, (icon_x, y + ((box_header_height - ih) // 2)), icon_tint)
+                draw.text((text_x, y + 6), text, font=font_for_text, fill=header_text_rgb)
+                return (icon_x if icon_im else text_x) - gap_between_parts
 
-            # Draw in order: Temp -> Wind -> Precip
-            if temp_text:
-                right_x = _draw_icon_and_text_right("thermometer", temp_text, right_x, y, small_icon_size, weather_tag_font)
-
+            if temp_text: right_x = _draw_icon_and_text_right("thermometer", temp_text, right_x, y, small_icon_size, weather_tag_font)
             if wind_text:
-                # Combine wind speed and direction label (FIX: Restore wind direction)
                 wind_label = wind_text
                 try:
                     if wind_dir is not None:
                         dir_short = _deg_to_cardinal(float(wind_dir))
-                        if dir_short:
-                            wind_label = f"{wind_label} {dir_short}"
-                except Exception:
-                    pass
+                        if dir_short: wind_label = f"{wind_label} {dir_short}"
+                except Exception: pass
                 right_x = _draw_icon_and_text_right("wind", wind_label, right_x, y, small_icon_size, weather_tag_font)
+            if precip_text: right_x = _draw_icon_and_text_right("cloud-rain", precip_text, right_x, y, small_icon_size, weather_tag_font)
 
-            if precip_text:
-                right_x = _draw_icon_and_text_right("cloud-rain", precip_text, right_x, y, small_icon_size, weather_tag_font)
-
-
-        if underline_date:
-            date_w = _text_width(draw, pretty, bold_font)
-            date_x = x + box_header_padding
-            underline_y = hy1 - 4
-            draw.line((date_x, underline_y, date_x + date_w, underline_y), fill=box_outline_rgb, width=1)
-
-        inner_x = x + 10
-        inner_y = y + box_header_height + top_padding
-        inner_w = box_w - 16
-        max_bottom = y + box_h - bottom_padding
-
-        evs = groups.get(date_key, [])
-        try:
-            evs = sorted(evs, key=lambda e: e.get("time") or "")
-        except Exception:
-            pass
-
-        cur_y = inner_y
+        inner_x, inner_y, max_bottom = x + 10, y + box_header_height + top_padding, y + box_h - bottom_padding
+        evs = sorted(groups.get(date_key, []), key=lambda e: e.get("time") or "")
+        
         if evs:
-            cur_y = render_events_section(base, inner_x, cur_y, inner_w, evs, font,
-                                        small_font=small_font, tag_font=weather_tag_font, icon_manager=opts.get("icon_manager"),
-                                        event_vspacing=event_vspacing, icon_gap=icon_gap,
-                                        text_color=body_text_rgb, dotted_line=dotted_line_between_events,
-                                        dot_color=dot_rgb, dot_gap=dot_gap, min_icon_padding=min_icon_padding,
-                                        icon_pad_square=icon_pad_square, event_icon_slot=event_icon_slot,
-                                        tint_event_icons=tint_event_icons, max_event_lines=max_event_lines)
+            render_events_section(base, inner_x, inner_y, inner_w, evs, font,
+                                small_font=small_font, tag_font=weather_tag_font, icon_manager=opts.get("icon_manager"),
+                                event_vspacing=event_vspacing, icon_gap=icon_gap,
+                                text_color=body_text_rgb, dotted_line=dotted_line_between_events,
+                                dot_color=dot_rgb, dot_gap=dot_gap, min_icon_padding=min_icon_padding,
+                                icon_pad_square=icon_pad_square, event_icon_slot=event_icon_slot,
+                                tint_event_icons=tint_event_icons, max_event_lines=max_event_lines)
         else:
             placeholder = opts.get("no_events_text", "Ingen avtaler")
-            if placeholder:
-                draw.text((inner_x, cur_y), placeholder, font=font, fill=body_text_rgb)
-
-        if cur_y > max_bottom and show_more_text:
-            more_y = max_bottom - getattr(font, "size", 12)
-            draw.text((inner_x, more_y), "…", font=font, fill=body_text_rgb)
-
-    # --- SAFETY: force exact Inky resolution ---
-    TARGET_W = 800
-    TARGET_H = 480
-
-    if base.size != (TARGET_W, TARGET_H):
-        fixed = Image.new("RGBA", (TARGET_W, TARGET_H), bg_rgba)
-        fixed.paste(base, (0, 0))
-        base = fixed
-
-        # --- SPECTRA 7 SHARPNESS FIX ---
-        # Convert to RGB first to drop the Alpha channel
+            if placeholder: draw.text((inner_x, inner_y), placeholder, font=font, fill=body_text_rgb)
+    
+# --- SPECTRA 6 SHARPNESS & PALETTE FIX ---
+    
+    # 1. Flatten to RGB (Removes the Alpha channel to stop the error)
+    if base.mode == "RGBA":
+        # Create a solid white background 
+        canvas = Image.new("RGB", (width, height), (255, 255, 255))
+        # Paste using base as the mask to keep icons/text crisp
+        canvas.paste(base, (0, 0), base)
+        base = canvas
+    else:
         base = base.convert("RGB")
-        
-        # Define the 7 hardware ink colors
-        # Black, White, Green, Blue, Red, Yellow, Orange
-        inky_palette = [
-            0, 0, 0,       # Black
-            255, 255, 255, # White
-            0, 255, 0,     # Green
-            0, 0, 255,     # Blue
-            255, 0, 0,     # Red
-            255, 255, 0,   # Yellow
-            255, 165, 0    # Orange
-        ]
-        # Pad to 256 colors for PIL compatibility
-        inky_palette += [0] * (768 - len(inky_palette))
 
-        # Create a palette template image
-        palette_im = Image.new("P", (1, 1))
-        palette_im.putpalette(inky_palette)
+    # 2. Define the Spectra 6 Hardware Palette (6 Colors)
+    # Black, White, Green, Blue, Red, Yellow
+    inky_palette = [
+        0, 0, 0,       # Black
+        255, 255, 255, # White
+        0, 255, 0,     # Green
+        0, 0, 255,     # Blue
+        255, 0, 0,     # Red
+        255, 255, 0    # Yellow
+    ]
+    # Pad to 256 colors for PIL compatibility
+    inky_palette += [0] * (768 - len(inky_palette))
+    
+    palette_im = Image.new("P", (1, 1))
+    palette_im.putpalette(inky_palette)
 
-        # QUANTIZE: This is the magic line. 
-        # dither=0 (or Image.Dither.NONE) turns off the shading/blurring.
-        base = base.quantize(palette=palette_im, dither=0).convert("RGB")
-        # -------------------------------
+    # 3. Quantize with Dither.NONE
+    # This prevents the 'rainbow' speckles and ensures razor-sharp text
+    base = base.quantize(palette=palette_im, dither=Image.Dither.NONE).convert("RGB")
+    
     return base
-
 # Removed helper function make_mockup_with_bezel as it was outside core calendar rendering.

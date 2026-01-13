@@ -153,7 +153,7 @@ def main(argv=None):
         print("save_jpeg_fast failed:", e)
         try:
             # Note: args.out_jpg is guaranteed to exist due to argparse default.
-            img.convert("RGB").save(args.out_jpg, quality=95) 
+            img.convert("RGB").save(args.out_jpg, "JPEG", quality=100, subsampling=0)
             print("Saved JPG via PIL fallback:", args.out_jpg)
         except Exception as e2:
             print("Failed to save JPG fallback:", e2)
