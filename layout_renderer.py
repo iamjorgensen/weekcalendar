@@ -17,8 +17,8 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
 ICONS_DIR = os.path.join(ASSETS_DIR, "icons")
 
-DEFAULT_FONT = os.path.join(FONTS_DIR, "NotoSans-Bold.ttf")
-DEFAULT_BOLD_FONT = os.path.join(FONTS_DIR, "NotoSans-Bold.ttf")
+DEFAULT_FONT = os.path.join(FONTS_DIR, "Inter.ttf")
+DEFAULT_BOLD_FONT = os.path.join(FONTS_DIR, "Inter.ttf")
 
 ICON_NAME_MAP = {
     "clearsky_day": "sun",
@@ -797,6 +797,8 @@ def render_events_section(image: Image.Image, x: int, y: int, width: int, events
                 pos += dot_gap
 
     return cursor_y
+
+
 
 def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer_opts: dict = None):
     opts = renderer_opts or {}
