@@ -36,7 +36,7 @@ INKY_COLORS = {
     "red":    (255, 0, 0),
     "yellow": (255, 255, 0),
     "blue":   (0, 0, 255),
-    "green":  (0, 128, 0),  # Most Spectra 6 displays use a darker green
+    "green": (0, 255, 0)  # Most Spectra 6 displays use a darker green
 }
 
 def color_to_rgb(name: Optional[str]):
