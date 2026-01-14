@@ -17,8 +17,8 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 FONTS_DIR = os.path.join(ASSETS_DIR, "fonts") 
 ICONS_DIR = os.path.join(ASSETS_DIR, "icons")
 
-DEFAULT_FONT = os.path.join(FONTS_DIR, "Inter.ttf")
-DEFAULT_BOLD_FONT = os.path.join(FONTS_DIR, "Inter.ttf")
+DEFAULT_FONT = os.path.join(FONTS_DIR, "Inter-SemiBold.ttf")
+DEFAULT_BOLD_FONT = os.path.join(FONTS_DIR, "Inter-SemiBold.ttf")
 
 ICON_NAME_MAP = {
     "clearsky_day": "sun",
@@ -1066,7 +1066,24 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
 
     # 3. Quantize with Dither.NONE
     # This prevents the 'rainbow' speckles and ensures razor-sharp text
-    base = base.quantize(palette=palette_im, dither=Image.Dither.NONE).convert("RGB")
-    
+    #base = base.quantize(palette=palette_im, dither=Image.Dither.NONE).convert("RGB")
+
+        
+
+    # 1. Flatten alpha correctly
+    if base.mode == "RGBA":
+        canvas = Image.new("RGB", (width, height), (255, 255, 255))
+        canvas.paste(base, (0, 0), base)
+        base = canvas
+    else:
+        base = base.convert("RGB")
+
+    # 2. Quantize DIRECTLY to Spectra palette
+    #    NO dithering – stable UI
+    base = base.quantize(
+        palette=palette_im,
+        dither=Image.Dither.NONE
+    ).convert("RGB")
+
     return base
 # Removed helper function make_mockup_with_bezel as it was outside core calendar rendering.

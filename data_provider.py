@@ -55,6 +55,38 @@ if not OPENAI_API_KEY:
 else:
     print(f"[DEBUG] OpenAI API Key detected (starts with {OPENAI_API_KEY[:5]}...)")
 
+def _format_birthday_display(text: str):
+    """
+    Convert 'Bursdag: Name YYYY' -> 'Name XX år'
+    Returns None if no conversion should happen.
+    """
+    if not text:
+        return None
+
+    s = text.strip()
+
+    # Must start with 'Bursdag:'
+    if not s.lower().startswith("bursdag:"):
+        return None
+
+    # Match: Bursdag: Name 1973
+    m = re.match(r"^Bursdag:\s*(.+?)\s+(\d{4})$", s)
+    if not m:
+        return None
+
+    name = m.group(1).strip()
+    year = int(m.group(2))
+
+    # Sanity check year
+    now = now_local()
+    if year < 1900 or year > now.year:
+        return None
+
+    age = now.year - year
+
+    return f"{name} {age} år"
+
+
 def get_ai_suggested_icon(summary: str):
     """
     Uses OpenAI to suggest a Lucide icon name.
@@ -75,7 +107,7 @@ def get_ai_suggested_icon(summary: str):
             messages=[
                 {
                     "role": "system", 
-                    "content": "You map calendar events to Lucide icon names. Return ONLY the single most relevant lowercase icon name (e.g. 'utensils', 'car', 'users'). The input is in Norwegian. No punctuation, no explanation."
+                    "content": "You map calendar events to Lucide icon names. Return ONLY the single most relevant lowercase icon name (e.g. 'utensils', 'car', 'users'). Prefer filled icons that will be returned well on a e-ink screen. The input is in Norwegian. No punctuation, no explanation."
                 },
                 {"role": "user", "content": f"Event: {summary}"}
             ],
@@ -229,6 +261,10 @@ def date_string_for_offset(day_index=0):
 # --- REMOVED: _safe_rgb_from_mapping_entry as it is now redundant ---
 def apply_event_mapping(summary: str):
     original = (summary or "").strip()
+
+    # --- Birthday special-case ---
+    birthday_display = _format_birthday_display(original)
+
     out = {
         "display_text": original,
         "tag_text": None,
@@ -275,6 +311,10 @@ def apply_event_mapping(summary: str):
         else:
             # This handles your "Middag:" case where text might be intentionally empty
             print(f"[AI Icon] Skipped: Mapping for '{original}' resulted in empty text.")
+
+    # Apply birthday formatting if matched
+    if birthday_display:
+        out["display_text"] = birthday_display
 
     return out
 
