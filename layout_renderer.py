@@ -660,16 +660,14 @@ def render_events_section(image: Image.Image, x: int, y: int, width: int, events
                         min_icon_padding: int = 4, icon_pad_square: bool = True,
                         event_icon_slot: int = 20, tint_event_icons: bool = True,
                         max_event_lines: int = 2):
-    """Draw events vertically and return new cursor_y below last drawn line."""
+
     draw = ImageDraw.Draw(image)
     cursor_y = y
-    
-    # Define tag constants used for layout
+
     tag_padding_x = 8
     tag_padding_y = 3
     tag_gap = 8
 
-    # Initialize fonts defensively
     if small_font is None:
         small_font = _ensure_font(DEFAULT_FONT, max(10, getattr(font, "size", 12) - 2))
     if tag_font is None:
@@ -677,155 +675,144 @@ def render_events_section(image: Image.Image, x: int, y: int, width: int, events
 
     body_rgb = _normalize_color_input(text_color)
     dot_rgb = _normalize_color_input(dot_color) if dot_color is not None else (0, 0, 0)
-    
+
     for i, ev in enumerate(events):
         name = ev.get("display_text") or ev.get("name") or ""
         time = ev.get("time") or ""
         icon_name = ev.get("icon")
         requested_icon_size = ev.get("icon_size") or ev.get("icon_size_px") or max(12, event_icon_slot - 4)
 
-        # Calculate line height (ensuring height calculation matches measurement function)
-        line_height = _measure_row_height(ev, event_vspacing, min_icon_padding, draw, font, small_font,
-                                          width - 16, event_icon_slot, icon_gap, max_event_lines)
+        # --- row height ---
+        line_height = _measure_row_height(
+            ev, event_vspacing, min_icon_padding, draw, font, small_font,
+            width - 16, event_icon_slot, icon_gap, max_event_lines
+        )
 
-        # Icon display sizing
+        # --- icon sizing ---
         icon_display_h = max(10, int(line_height * 0.80))
         if icon_display_h > requested_icon_size:
             icon_display_h = requested_icon_size
 
         text_x = x + event_icon_slot + icon_gap
-        text_w_avail = width - event_icon_slot - icon_gap - 8 # Safety margin
+        text_w_avail = width - event_icon_slot - icon_gap - 8
 
-        # Draw Icon
+        # --- draw icon ---
         if icon_name:
             icon_im = _load_icon_image(icon_name, icon_display_h, icon_manager=icon_manager)
             if icon_im:
                 icon_prepared = _resize_to_height_and_pad(icon_im, icon_display_h, pad_square=icon_pad_square)
-                # Force event icons to be drawn in black (body_rgb)
                 icon_to_draw = _tint_icon_to_color(icon_prepared, body_rgb)
                 iw, ih = icon_to_draw.size
                 slot_x = x + max(0, (event_icon_slot - iw) // 2)
                 icon_y = cursor_y + line_height // 2 - ih // 2
                 image.paste(icon_to_draw, (slot_x, icon_y), icon_to_draw)
-            else:
-                # Placeholder dot for missing icon
-                ph_r = min(6, max(3, event_icon_slot // 4))
-                ph_cx = x + event_icon_slot // 2
-                ph_cy = cursor_y + line_height // 2
-                draw.ellipse([ph_cx - ph_r, ph_cy - ph_r, ph_cx + ph_r, ph_cy + ph_r], fill=body_rgb, outline=None)
 
-        # Draw Time
+        # --- measure first line height (for vertical centering) ---
+        try:
+            bbox_1st = draw.textbbox((0, 0), name if name else "X", font=font)
+            line_h_1st = bbox_1st[3] - bbox_1st[1]
+        except Exception:
+            line_h_1st = getattr(font, "size", 12)
+
+        # 🔧 NEW: vertically centered baseline for text + time
+        text_baseline_y = cursor_y + (line_height - line_h_1st) // 2
+
+        # --- draw time ---
         name_x = text_x
         if time:
             time_w = _text_width(draw, time, small_font)
-            draw.text((x + event_icon_slot + icon_gap, cursor_y), time, font=small_font, fill=body_rgb)
+            draw.text(
+                (x + event_icon_slot + icon_gap, text_baseline_y),  # CHANGED
+                time,
+                font=small_font,
+                fill=body_rgb
+            )
             name_x = x + event_icon_slot + icon_gap + time_w + 6
 
-        # --- Wrapping and Drawing Name + Tags ---
         max_text_width = width - (name_x - x) - 8
 
-        # Recalculate wrapping dimensions from _measure_row_height logic
-        # 1. Determine reserved space for tags on the first line (simplified minimal tags for size calc)
+        # --- tag measurement (first line) ---
         tags_for_measure = ev.get("tags") or []
-        tag_text_raw = ev.get("tag_text") or ev.get("tag") or None
+        tag_text_raw = ev.get("tag_text") or ev.get("tag")
         if not tags_for_measure and tag_text_raw:
-            parts = [p.strip() for p in tag_text_raw.split(",") if p.strip()]
-            if parts: tags_for_measure = [{"text": p} for p in parts]
+            tags_for_measure = [{"text": p.strip()} for p in tag_text_raw.split(",") if p.strip()]
 
         tag_total_w = 0
         tag_count = 0
         for t in tags_for_measure:
             txt = (t.get("text") or "").strip()
-            if not txt: continue
+            if not txt:
+                continue
             tw = _text_width(draw, txt, small_font)
             chip_w = tw + tag_padding_x * 2
-            if tag_total_w + chip_w + (tag_gap if tag_count > 0 else 0) > max_text_width // 2: break
-            if tag_count > 0: tag_total_w += tag_gap
+            if tag_total_w + chip_w > max_text_width // 2:
+                break
+            if tag_count > 0:
+                tag_total_w += tag_gap
             tag_total_w += chip_w
             tag_count += 1
-        
-        reserved_for_tags = tag_total_w + (6 if tag_total_w > 0 else 0)
-        name_max_width = max(8, text_w_avail - reserved_for_tags) 
 
-        # 2. Simulate full wrapping to get lines
-        words = (name or "").split()
+        reserved_for_tags = tag_total_w + (6 if tag_total_w else 0)
+        name_max_width = max(8, text_w_avail - reserved_for_tags)
+
+        # --- wrap text ---
+        words = name.split()
         first_line = ""
         rest_text = ""
-        for idx_w, w in enumerate(words):
+        for idx, w in enumerate(words):
             cand = (first_line + " " + w).strip() if first_line else w
             if _text_width(draw, cand, font) <= name_max_width:
                 first_line = cand
             else:
-                rest_text = " ".join(words[idx_w:])
+                rest_text = " ".join(words[idx:])
                 break
-        if not first_line and words:
-            first_line = _ellipsize(draw, words[0], font, name_max_width)
-            rest_text = " ".join(words[1:]) if len(words) > 1 else ""
 
         remaining_lines = []
         if rest_text:
-            remaining_lines = _wrap_text_to_lines(draw, rest_text, font, max_text_width, max(0, max_event_lines - 1))
+            remaining_lines = _wrap_text_to_lines(
+                draw, rest_text, font, max_text_width, max_event_lines - 1
+            )
 
-        lines = [first_line] + remaining_lines
-        if not lines: lines = [""]
-        
-        # 3. Draw first line text
-        draw.text((name_x, cursor_y), lines[0], font=font, fill=body_rgb)
+        lines = [first_line] + remaining_lines if first_line else [""]
 
-        # Get actual height of first line for tag placement
-        try:
-            bbox_1st = draw.textbbox((0, 0), lines[0] if lines[0] else "X", font=font)
-            line_h_1st = bbox_1st[3] - bbox_1st[1]
-        except Exception:
-            line_h_1st = getattr(font, "size", 12)
+        # --- draw first line (VERTICALLY CENTERED) ---
+        draw.text(
+            (name_x, text_baseline_y),  # CHANGED
+            lines[0],
+            font=font,
+            fill=body_rgb
+        )
 
-        # Vertical position for chips on the first line (centered in the total row height)
-        tag_top = cursor_y + (line_height // 2) - (tag_font.size // 2) # simplified vertical centering
-        tag_top = max(cursor_y, tag_top) # don't draw above the current cursor
-        
-        # Draw tags on the first line
+        # --- draw tags ---
         displayed_name_w = _text_width(draw, lines[0], font)
+        tag_top = cursor_y + (line_height // 2) - (tag_font.size // 2)
         tag_start_x = name_x + displayed_name_w + 6
-        max_right = x + width - 4
-        
-        after_tags_x = draw_event_tags(draw, tag_start_x, tag_top, ev, tag_font,
-                                    padding_x=tag_padding_x, padding_y=tag_padding_y, gap=tag_gap, max_x=max_right)
-        drew_on_first_line = (after_tags_x != tag_start_x)
+        draw_event_tags(
+            draw, tag_start_x, tag_top, ev, tag_font,
+            padding_x=tag_padding_x, padding_y=tag_padding_y,
+            gap=tag_gap, max_x=x + width - 4
+        )
 
-
-        # 4. Draw subsequent wrapped lines
+        # --- draw wrapped lines ---
         if len(lines) > 1:
             spacing_px = max(2, int(line_h_1st * 0.12))
-            second_y = cursor_y + line_h_1st + spacing_px
-            ln_y = second_y
-            
-            # Recalculate line heights array for drawing if needed (already done in _measure_row_height but safe here)
-            line_heights = []
-            for ln in lines:
-                try:
-                    bbox = draw.textbbox((0, 0), ln if ln else "X", font=font)
-                    line_heights.append(bbox[3] - bbox[1])
-                except Exception:
-                    line_heights.append(getattr(font, "size", 12))
-
-            for idx_ln, ln in enumerate(lines[1:]):
+            ln_y = text_baseline_y + line_h_1st + spacing_px
+            for ln in lines[1:]:
                 draw.text((name_x, ln_y), ln, font=font, fill=body_rgb)
-                ln_y += line_heights[1 + idx_ln] + spacing_px
-        
-        # Advance cursor and draw dotted separator
+                ln_y += line_h_1st + spacing_px
+
+        # --- advance cursor ---
         prev_cursor = cursor_y
-        cursor_y += line_height # Use the calculated total line_height
+        cursor_y += line_height
 
         if dotted_line and i != len(events) - 1:
             y_line = prev_cursor + line_height - max(2, int(line_height * 0.18))
             pos = x
-            end = x + width
-            while pos < end:
+            while pos < x + width:
                 draw.rectangle([pos, y_line, pos + 1, y_line + 1], fill=dot_rgb)
                 pos += dot_gap
 
     return cursor_y
-
 
 
 def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer_opts: dict = None):
