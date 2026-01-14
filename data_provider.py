@@ -45,6 +45,53 @@ MOVAR_HUSNR = os.environ.get("MOVAR_HUSNR", "")
 # Hvor mange dager vi viser standard
 DEFAULT_DAYS = int(os.environ.get("DEFAULT_DAYS", "14"))
 
+
+# --- Configuration ---
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
+# DEBUG: Verify key loading
+if not OPENAI_API_KEY:
+    print("[DEBUG] WARNING: OPENAI_API_KEY is empty or not found in .env")
+else:
+    print(f"[DEBUG] OpenAI API Key detected (starts with {OPENAI_API_KEY[:5]}...)")
+
+def get_ai_suggested_icon(summary: str):
+    """
+    Uses OpenAI to suggest a Lucide icon name.
+    Input text is often in Norwegian.
+    """
+    if not OPENAI_API_KEY:
+        # We don't print here to avoid spamming if the key is missing
+        return None
+
+    # This log tells you the fallback is actually starting
+    print(f"[AI Icon] No local mapping for '{summary}'. Asking OpenAI...")
+    
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "You map calendar events to Lucide icon names. Return ONLY the single most relevant lowercase icon name (e.g. 'utensils', 'car', 'users'). The input is in Norwegian. No punctuation, no explanation."
+                },
+                {"role": "user", "content": f"Event: {summary}"}
+            ],
+            temperature=0,
+            max_tokens=10
+        )
+        suggestion = response.choices[0].message.content.strip().lower()
+        # Clean up potential extra words or dots
+        suggestion = suggestion.split()[0].replace(".", "").replace("'", "")
+        print(f"[AI Icon] SUCCESS: Suggested '{suggestion}' for '{summary}'")
+        return suggestion
+    except Exception as e:
+        print(f"[AI Icon Error] {e}")
+        return None
+
+
 # Try to import mapping helpers (non-fatal)
 def parse_locationforecast_timeseries(timeseries):
     """
@@ -180,16 +227,7 @@ def date_string_for_offset(day_index=0):
 
 
 # --- REMOVED: _safe_rgb_from_mapping_entry as it is now redundant ---
-
 def apply_event_mapping(summary: str):
-    """
-    Small shim that returns a dict with keys used by the rest of data_provider:
-      - display_text, tag_text, tag_color_name, tag_color_rgb,
-        icon, icon_size, icon_color_name, icon_color_rgb, mode, filtered_out, original_name, tags
-    Behavior:
-      - If mappings.apply_event_mapping exists, call and return its result (defensive).
-      - Else return a conservative structure (no changes).
-    """
     original = (summary or "").strip()
     out = {
         "display_text": original,
@@ -206,30 +244,39 @@ def apply_event_mapping(summary: str):
         "tags": [],
     }
 
-    # 1) Prefer a mapping implementation in mappings module if it exists.
+    # 1) TRY LOCAL MAPPING FIRST
+    found_local_icon = False
     try:
-        if mappings_module and hasattr(mappings_module, "apply_event_mapping") and callable(getattr(mappings_module, "apply_event_mapping")):
-            try:
-                res = mappings_module.apply_event_mapping(original)
-                # Expect res to be a dict in the expected shape; be defensive
-                if isinstance(res, dict):
-                    # copy-over known keys
-                    for k in out.keys():
-                        if k in res:
-                            out[k] = res.get(k)
-                    # merge tags if present
-                    if res.get("tags") and isinstance(res.get("tags"), list):
-                        out["tags"] = res.get("tags")
-                    return out
-            except Exception:
-                # fallthrough to conservative default
-                pass
+        if mappings_module and hasattr(mappings_module, "apply_event_mapping"):
+            res = mappings_module.apply_event_mapping(original)
+            if isinstance(res, dict):
+                # Apply all keys from mapping (This preserves your "Middag:" stripping logic)
+                for k in out.keys():
+                    if k in res:
+                        out[k] = res.get(k)
+                if res.get("tags"):
+                    out["tags"] = res.get("tags")
+                
+                # Check if we found an icon in your CSV/Mappings
+                if out.get("icon"):
+                    found_local_icon = True
     except Exception:
         pass
 
-    # 2) Return conservative default
-    return out
+    # 2) AI FALLBACK
+    # Trigger ONLY if no icon was found locally and we have an API key
+    if not found_local_icon:
+        # Use display_text if mapping stripped it, otherwise use original summary
+        ai_query = out.get("display_text") or original
+        if ai_query and len(ai_query.strip()) > 0:
+            ai_icon = get_ai_suggested_icon(ai_query)
+            if ai_icon:
+                out["icon"] = ai_icon
+        else:
+            # This handles your "Middag:" case where text might be intentionally empty
+            print(f"[AI Icon] Skipped: Mapping for '{original}' resulted in empty text.")
 
+    return out
 
 # --------------------------------------------------------------------
 # Tommekalender integration
@@ -1498,3 +1545,27 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
     except Exception as ex:
         print("[fetch_google_holiday_events] exception:", ex)
         return []
+    
+def initial_fetch_all(days=DEFAULT_DAYS, session=None, gatenavn=None, husnr=None):
+    """ Master fetch function that combines all your logic """
+    s = session or requests.Session()
+    try:
+        fractions = fetch_fraction_names(session=s)
+        waste = fetch_tommekalender_events(fractions, days=days, session=s, gatenavn=gatenavn, husnr=husnr)
+        gcal = fetch_google_calendar_events(days=days, session=s)
+        
+        # Merge all events
+        all_events = gcal + waste
+        all_events.sort(key=lambda e: (e['date'], e.get('time', '')))
+
+        weather, hourly, meta = fetch_weather_from_provider(lat=LAT, lon=LON, days=days)
+        
+        return {
+            "events": all_events,
+            "weather": weather,
+            "hourly_today": hourly,
+            "meta": meta
+        }
+    finally:
+        if session is None:
+            s.close()
