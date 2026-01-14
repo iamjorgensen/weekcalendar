@@ -12,7 +12,7 @@ import re
 from typing import List, Tuple, Union, Dict
 from datetime import datetime, timedelta
 # Note: Keep the following import for event mapping, as requested.
-from mappings import mapping_info_for_event, color_to_rgb 
+from mappings import INKY_COLORS, mapping_info_for_event, color_to_rgb 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 FONTS_DIR = os.path.join(ASSETS_DIR, "fonts") 
 ICONS_DIR = os.path.join(ASSETS_DIR, "icons")
@@ -1035,17 +1035,14 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     else:
         base = base.convert("RGB")
 
-    # 2. Define the Spectra 6 Hardware Palette (6 Colors)
-    # Black, White, Green, Blue, Red, Yellow
-    inky_palette = [
-        0, 0, 0,       # Black
-        255, 255, 255, # White
-        0, 255, 0,     # Green
-        0, 0, 255,     # Blue
-        255, 0, 0,     # Red
-        255, 255, 0    # Yellow
-    ]
-    # Pad to 256 colors for PIL compatibility
+    # Generate the palette list directly from your source of truth
+    # We maintain a specific order for the hardware
+    color_order = ["black", "white", "green", "blue", "red", "yellow"]
+    inky_palette = []
+    for name in color_order:
+        inky_palette.extend(INKY_COLORS[name])
+
+    # Pad to 256 colors (768 values) for PIL
     inky_palette += [0] * (768 - len(inky_palette))
     
     palette_im = Image.new("P", (1, 1))

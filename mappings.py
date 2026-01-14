@@ -29,15 +29,14 @@ try:
 except Exception as e:
     requests = None  # we'll raise a clear error if CSV fetch is attempted
 
-# --- Colors and small helpers ----------------------------------------
+# Official Spectra 6 RGB Approximations
 INKY_COLORS = {
-    "black":  (0, 0, 0),
     "white":  (255, 255, 255),
+    "black":  (0, 0, 0),
     "red":    (255, 0, 0),
     "yellow": (255, 255, 0),
-    "green":  (0, 128, 0),
     "blue":   (0, 0, 255),
-    "orange": (255, 128, 0),
+    "green":  (0, 128, 0),  # Most Spectra 6 displays use a darker green
 }
 
 def color_to_rgb(name: Optional[str]):
