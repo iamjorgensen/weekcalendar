@@ -130,43 +130,70 @@ def _ellipsize(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, 
             return t + ell
     return ell
 
-
 def _load_icon_image(icon_name: str, size: int, icon_manager=None):
-    """Load icon by name. Try map -> icon_manager -> assets/icons. Return RGBA or None."""
+    """
+    Load icon by name. Supports local PNG/SVG and Manager downloads.
+    Uses a universal detector for resvg_py to prevent 'AttributeError'.
+    """
     if not icon_name:
         return None
+    
     icon_try = ICON_NAME_MAP.get(icon_name, icon_name)
-    # try icon_manager (if provided)
+
+    # 1. Primary: Use the IconManager (it handles auto-downloads)
     if icon_manager is not None:
         try:
-            if hasattr(icon_manager, "get_icon_image"):
-                im = icon_manager.get_icon_image(icon_try, size)
-                if isinstance(im, Image.Image):
-                    return im.convert("RGBA")
-            if hasattr(icon_manager, "render_icon"):
-                im = icon_manager.render_icon(icon_try, size)
-                if isinstance(im, Image.Image):
-                    return im.convert("RGBA")
-        except Exception:
-            pass
-    # try files
-    png_path = os.path.join(ICONS_DIR, f"{icon_try}.png")
-    if not os.path.isfile(png_path):
-        png_path2 = os.path.join(ICONS_DIR, f"{icon_name}.png")
-        if os.path.isfile(png_path2):
-            png_path = png_path2
-        else:
-            return None
-    try:
-        im = Image.open(png_path).convert("RGBA")
-        w, h = im.size
-        if h != size:
-            new_w = max(1, int(w * (size / float(h))))
-            im = im.resize((new_w, size), Image.Resampling.LANCZOS)
-        return im
-    except Exception:
-        return None
+            im = icon_manager.get_icon_image(icon_try, size)
+            if im: return im.convert("RGBA")
+        except Exception as e:
+            print(f"IconManager error for {icon_try}: {e}")
 
+    # 2. Local File Fallback (PNG or SVG)
+    for ext in [".png", ".svg"]:
+        path = os.path.join(ICONS_DIR, f"{icon_try}{ext}")
+        if os.path.isfile(path):
+            try:
+                if ext == ".svg":
+                    import resvg_py
+                    import io
+                    with open(path, "rb") as f:
+                        svg_data = f.read()
+                    
+                    png_data = None
+                    
+                    # --- UNIVERSAL DETECTOR ---
+                    # Check for different method names across library versions
+                    # A: render_to_png
+                    if hasattr(resvg_py, 'render_to_png'):
+                        png_data = resvg_py.render_to_png(svg_data, width=size, height=size)
+                    
+                    # B: Resvg(data).render()
+                    elif hasattr(resvg_py, 'Resvg'):
+                        try:
+                            # Try as bytes first
+                            r = resvg_py.Resvg(svg_data)
+                        except:
+                            # Try as string
+                            r = resvg_py.Resvg(svg_data.decode("utf-8"))
+                        png_data = r.render(width=size, height=size)
+                        
+                    # C: render (simple)
+                    elif hasattr(resvg_py, 'render'):
+                        png_data = resvg_py.render(svg_data, width=size)
+                    
+                    if png_data:
+                        return Image.open(io.BytesIO(png_data)).convert("RGBA")
+                    else:
+                        print(f"SVG Engine found but no valid render method for {path}")
+                        return None
+                else:
+                    # Standard PNG handling
+                    im = Image.open(path).convert("RGBA")
+                    return im.resize((size, size), Image.Resampling.LANCZOS)
+            except Exception as e:
+                print(f"Error loading local icon {path}: {e}")
+                continue
+    return None
 
 def _normalize_color_input(col: Union[int, Tuple, list, str]) -> Tuple[int, int, int]:
     """Normalize color input (int, tuple, list, hex/name string) to (r,g,b)."""
@@ -186,18 +213,19 @@ def _normalize_color_input(col: Union[int, Tuple, list, str]) -> Tuple[int, int,
 
 
 def _tint_icon_to_color(icon_im: Image.Image, color) -> Image.Image:
-    """Tint icon_im to color (r,g,b). preserve alpha."""
+    """Hard-tints icon to specific color. Prevents dithering on icon edges."""
     if icon_im is None:
         return None
-    try:
-        icon = icon_im.convert("RGBA")
-        r, g, b = _normalize_color_input(color)
-        solid = Image.new("RGBA", icon.size, (r, g, b, 255))
-        alpha = icon.split()[3]
-        solid.putalpha(alpha)
-        return solid
-    except Exception:
-        return icon_im
+    icon = icon_im.convert("RGBA")
+    r, g, b = _normalize_color_input(color)
+    
+    # Create a mask from the alpha channel
+    alpha = icon.split()[3]
+    # Create a solid color image
+    color_img = Image.new("RGBA", icon.size, (r, g, b, 255))
+    # Apply the mask
+    color_img.putalpha(alpha)
+    return color_img
 
 
 def _resize_to_height_and_pad(icon_im: Image.Image, height: int, pad_square: bool = True) -> Image.Image:
