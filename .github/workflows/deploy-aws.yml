@@ -1,8 +1,18 @@
 name: Deploy to AWS
 
-# Manual only for now: Actions tab -> "Deploy to AWS" -> Run workflow.
+# Deploys on pushes to main that touch the app or infra, or manually:
+# Actions tab -> "Deploy to AWS" -> Run workflow.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "*.py"
+      - "aws_lambda/**"
+      - "infra/**"
+      - "assets/fonts/**"
+      - "assets/icons/**"
+      - ".github/workflows/deploy-aws.yml"
 
 permissions:
   id-token: write   # OIDC token for aws-actions/configure-aws-credentials
@@ -39,7 +49,8 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          # Not a secret: only GitHub Actions runs of this repo on main can assume it.
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::241455051821:role/weekcalendar-bootstrap-DeployRole-ckiWIIv7zDen' }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Validate template
