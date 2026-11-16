@@ -38,8 +38,13 @@ Parameters:
     Description: SSM Parameter Store path (without slashes) holding config and secrets.
   RenderDays:
     Type: Number
-    Default: 7
-    Description: Number of days shown on the calendar.
+    Default: 10
+    Description: Number of days fetched for the calendar (the design shows as many as fit).
+  Design:
+    Type: String
+    Default: hero
+    AllowedValues: [hero, agenda, band, legacy]
+    Description: Layout of the calendar image (legacy = the original Pi layout).
 
 Globals:
   Function:
@@ -101,6 +106,7 @@ Resources:
       Environment:
         Variables:
           RENDER_DAYS: !Ref RenderDays
+          DESIGN: !Ref Design
           WORK_DIR: /tmp/weekcalendar
           GS_CACHE_PATH: /tmp/weekcalendar/cache/event_mappings_cache.json
           # The mappings cache is only used when the Google Sheet fetch fails;

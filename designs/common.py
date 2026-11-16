@@ -105,15 +105,45 @@ def wrap(draw, text, fnt, max_w, max_lines):
     return lines or [""]
 
 
-def icon(name, size, color=BLACK):
-    """Load a bundled icon tinted to a solid colour (alpha-thresholded: no grey edges)."""
+_icon_manager = None
+
+# If an icon can't be found or downloaded, try these instead
+ICON_FALLBACK = {
+    "cloud-sun": "cloud", "cloud-moon": "moon", "cloud-lightning": "cloud-rain",
+    "cloud-fog": "cloud", "cloud-drizzle": "cloud-rain", "trash-2": "trash",
+    "sunrise": "sun", "sunset": "moon",
+}
+
+
+def set_icon_manager(manager):
+    """Optional IconManager (inky_icons_package) used to download missing Lucide icons."""
+    global _icon_manager
+    _icon_manager = manager
+
+
+def _find_icon_file(name):
+    dirs = [ICONS]
+    if os.environ.get("ICONS_CACHE_DIR"):
+        dirs.append(os.environ["ICONS_CACHE_DIR"])
+    for d in dirs:
+        for ext in (".svg", ".png"):
+            p = os.path.join(d, name + ext)
+            if os.path.isfile(p):
+                return p
+    return None
+
+
+def icon(name, size, color=BLACK, _depth=0):
+    """Load an icon tinted to a solid colour (alpha-thresholded: no grey edges)."""
     if not name:
         return None
-    path_png = os.path.join(ICONS, name + ".png")
-    path_svg = os.path.join(ICONS, name + ".svg")
+    name = str(name).strip().lower()
+    path = _find_icon_file(name)
+    path_png = path if path and path.endswith(".png") else ""
+    path_svg = path if path and path.endswith(".svg") else ""
     im = None
     try:
-        if os.path.isfile(path_svg):
+        if path_svg and os.path.isfile(path_svg):
             import io
             import resvg_py
             with open(path_svg, "r", encoding="utf-8") as f:
@@ -123,7 +153,15 @@ def icon(name, size, color=BLACK):
             im = Image.open(path_png)
     except Exception:
         im = None
+    if im is None and _icon_manager is not None:
+        try:
+            im = _icon_manager.get_icon_image(name, size)  # downloads missing Lucide icons
+        except Exception:
+            im = None
     if im is None:
+        alt = ICON_FALLBACK.get(name)
+        if alt and _depth < 2:
+            return icon(alt, size, color, _depth + 1)
         return None
     im = im.convert("RGBA")
     if im.size != (size, size):
@@ -145,21 +183,27 @@ def paste_icon(img, name, x, y, size, color=BLACK):
     return 0
 
 
-WEATHER_ICON = {
-    "sol": "sun", "klart": "sun", "delvis skyet": "cloud", "skyet": "cloud",
-    "regn": "cloud-rain", "lett regn": "cloud-rain", "kraftig regn": "cloud-rain",
-    "regnbyger": "cloud-rain", "snø": "cloud-snow", "sludd": "cloud-snow",
-    "tåke": "cloud", "torden": "cloud-rain",
-}
+# Ordered: first match wins. Covers Norwegian labels (weather_provider) and
+# raw MET symbol codes (e.g. "lightrainshowers_day", "partlycloudy_night").
+WEATHER_RULES = [
+    (("torden", "thunder"), "cloud-lightning"),
+    (("snø", "snow", "sludd", "sleet", "hagl", "hail"), "cloud-snow"),
+    (("regn", "rain", "byge", "shower", "drizzle"), "cloud-rain"),
+    (("tåke", "fog"), "cloud-fog"),
+    (("delvis", "partly", "fair_night"), "cloud-sun"),
+    (("skyet", "cloud"), "cloud"),
+    (("clearsky_night",), "moon"),
+    (("klart", "sol", "clear", "fair"), "sun"),
+]
 
 
 def weather_icon_name(symbol):
-    s = (symbol or "").lower()
-    if s in WEATHER_ICON:
-        return WEATHER_ICON[s]
-    for k, v in WEATHER_ICON.items():
-        if k in s:
-            return v
+    s = str(symbol or "").lower()
+    if "night" in s and ("partly" in s or "fair" in s):
+        return "cloud-moon"
+    for keys, name in WEATHER_RULES:
+        if any(k in s for k in keys):
+            return name
     return "cloud"
 
 

@@ -40,7 +40,7 @@ def _band(img, draw, day, updated):
         for i, (label, ic, temp) in enumerate(w.get("periods") or []):
             px = wx + i * 62
             draw_text_top(draw, (px, py), label, f_tiny(13), WHITE)
-            paste_icon(img, ic, px, py + 18, 22, WHITE)
+            paste_icon(img, weather_icon_name(ic), px, py + 18, 22, WHITE)
             draw_text_top(draw, (px + 26, py + 22), f"{temp:.0f}°", f_bold(16), WHITE)
         f_det = f_tiny(14)
         dy = 148

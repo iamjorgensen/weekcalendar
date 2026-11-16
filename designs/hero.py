@@ -58,7 +58,7 @@ def _hero(img, draw, day, updated, accent=RED):
             for i, (label, ic, temp) in enumerate(periods):
                 cx = x0 + i * cell
                 draw_text_top(draw, (cx, y), label, f_lbl, WHITE)
-                paste_icon(img, ic, cx, y + 20, 24, WHITE)
+                paste_icon(img, weather_icon_name(ic), cx, y + 20, 24, WHITE)
                 draw_text_top(draw, (cx + 30, y + 25), f"{temp:.0f}°", f_pt, WHITE)
             y += 56
 

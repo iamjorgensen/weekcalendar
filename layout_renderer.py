@@ -846,7 +846,11 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         data["events"] = events
 
     groups = _group_events_by_date(events)
-    start_date = datetime.today().date()  
+    try:
+        from zoneinfo import ZoneInfo
+        start_date = datetime.now(ZoneInfo("Europe/Oslo")).date()
+    except Exception:
+        start_date = datetime.today().date()
     
     ordered_dates = [
         (start_date + timedelta(days=i)).isoformat()

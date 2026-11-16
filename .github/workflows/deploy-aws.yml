@@ -40,7 +40,7 @@ jobs:
       - name: Run handler tests
         run: |
           python -m pip install -r infra/requirements-lambda.txt boto3 "moto[s3,ssm]" pytest
-          python -m pytest tests/test_aws_handlers.py -q
+          python -m pytest tests -q
 
       - uses: aws-actions/setup-sam@v2
         with:

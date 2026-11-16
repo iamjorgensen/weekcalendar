@@ -9,6 +9,12 @@ import requests
 from datetime import datetime, timedelta, timezone
 import math
 
+try:
+    from zoneinfo import ZoneInfo
+    LOCAL_TZ = ZoneInfo("Europe/Oslo")  # explicit: AWS Lambda runs in UTC
+except Exception:
+    LOCAL_TZ = None
+
 # Default config (kan overskrives ved kall)
 DEFAULT_LAT = 59.4376
 DEFAULT_LON = 10.6432
@@ -41,7 +47,7 @@ def _to_local(dt_utc):
     """Convert aware UTC datetime to local system timezone (or keep tz-aware)."""
     if dt_utc.tzinfo is None:
         dt_utc = dt_utc.replace(tzinfo=timezone.utc)
-    return dt_utc.astimezone()  # system local tz (usually Europe/Oslo on your machine)
+    return dt_utc.astimezone(LOCAL_TZ) if LOCAL_TZ else dt_utc.astimezone()
 
 def _day_key_06_to_06(dt_local):
     """Return 'YYYY-MM-DD' day key using 06:00..05:59 definition."""
@@ -165,8 +171,13 @@ def _parse_met_timeseries_json(j):
             "temp": instant.get("air_temperature"),
             "wind_speed": instant.get("wind_speed"),
             "wind_dir": instant.get("wind_from_direction"),
-            "precip_next_1h": None
+            "precip_next_1h": None,
+            "symbol": None,
         }
+        for _p in ("next_1_hours", "next_6_hours"):
+            if data.get(_p) and (data[_p].get("summary") or {}).get("symbol_code"):
+                hourly_detail["symbol"] = data[_p]["summary"]["symbol_code"]
+                break
         # attempt to fill precipit next_1_hours
         if "next_1_hours" in data and data["next_1_hours"] and "details" in data["next_1_hours"]:
             hourly_detail["precip_next_1h"] = data["next_1_hours"]["details"].get("precipitation_amount")
@@ -265,7 +276,7 @@ def get_forecast_json(lat=DEFAULT_LAT, lon=DEFAULT_LON, days=DEFAULT_DAYS, user_
         result["meta"]["om_error"] = str(e)
 
     # build merged daily list for requested days (today..today+days-1)
-    today = datetime.now().date()
+    today = datetime.now(LOCAL_TZ).date() if LOCAL_TZ else datetime.now().date()
     for i in range(days):
         d = today + timedelta(days=i)
         ks = d.strftime("%Y-%m-%d")
@@ -333,7 +344,7 @@ def get_forecast_json(lat=DEFAULT_LAT, lon=DEFAULT_LON, days=DEFAULT_DAYS, user_
                 dt = datetime.fromisoformat(h["time"])
             except Exception:
                 continue
-            dt_local = dt.astimezone()
+            dt_local = dt.astimezone(LOCAL_TZ) if LOCAL_TZ else dt.astimezone()
             day_key = _day_key_06_to_06(dt_local)
             if day_key == today.strftime("%Y-%m-%d"):
                 filtered.append(h)

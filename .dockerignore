@@ -7,6 +7,7 @@
 !mappings.py
 !inky_icons_package.py
 !weather_provider.py
+!designs/*.py
 !aws_lambda/aws_common.py
 !aws_lambda/render_handler.py
 !assets/fonts/*.ttf
