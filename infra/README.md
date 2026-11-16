@@ -29,6 +29,10 @@ The Pi setup (`main.py` + `server.py`) still works unchanged.
 
 ## One-time setup
 
+**Shortcut:** steps 2 and 4 below can be done in one go. Open AWS CloudShell in eu-west-1 and run
+`bash <(curl -fsSL https://raw.githubusercontent.com/iamjorgensen/weekcalendar/feat/aws-lambda/infra/setup.sh)`,
+then paste your Pi's `.env` when asked. It creates the deploy role, stores the settings in SSM and makes a FRAME_TOKEN.
+
 You need: an AWS account, admin access to the GitHub repo. All `aws` commands below can be run in **AWS CloudShell** (the `>_` icon in the AWS console top bar, no install needed). Make sure the region selector in the console says **Europe (Ireland) eu-west-1**.
 
 ### 1. AWS account and a budget alarm
