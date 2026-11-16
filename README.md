@@ -22,3 +22,7 @@ A high-fidelity, intelligent calendar designed for the **Pimoroni Inky Frame (7.
     * `OpenAI` (Semantic event analysis)
     * `Requests` (API communication)
     * `Flask` (Remote trigger webhook)
+
+## ☁️ AWS hosting
+
+The Pi can be replaced by two AWS Lambda functions (daily render + a Function URL that serves the image). See [`infra/README.md`](infra/README.md) for setup.

@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  weekcalendar - renders an 800x480 calendar image for an Inky Frame once a day
+  (Render function, container image) and serves it over a Lambda Function URL
+  (Serve function, zip). Deploy in eu-west-1.
+
+Parameters:
+  RenderHour:
+    Type: Number
+    Default: 3
+    MinValue: 0
+    MaxValue: 23
+    Description: Hour (Europe/Oslo) of the daily render. The frame fetches at about 04:00.
+  RenderMinute:
+    Type: Number
+    Default: 30
+    MinValue: 0
+    MaxValue: 59
+    Description: Minute of the daily render.
+  ScheduleTimezone:
+    Type: String
+    Default: Europe/Oslo
+  ParameterPath:
+    Type: String
+    Default: weekcalendar
+    AllowedPattern: "[A-Za-z0-9_.-]+"
+    Description: SSM Parameter Store path (without slashes) holding config and secrets.
+  RenderDays:
+    Type: Number
+    Default: 7
+    Description: Number of days shown on the calendar.
+
+Globals:
+  Function:
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        BUCKET_NAME: !Ref ImageBucket
+        PARAM_PREFIX: !Sub "/${ParameterPath}/"
+
+Resources:
+  # ---------------------------------------------------------------- storage
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImageBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt ImageBucket.Arn
+              - !Sub "${ImageBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # ---------------------------------------------------------------- render
+  RenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-render"
+      Description: Fetch calendar/weather data, render the image, upload to S3.
+      PackageType: Image
+      Timeout: 60
+      MemorySize: 1024
+      EphemeralStorage:
+        Size: 512
+      Environment:
+        Variables:
+          RENDER_DAYS: !Ref RenderDays
+          WORK_DIR: /tmp/weekcalendar
+          GS_CACHE_PATH: /tmp/weekcalendar/cache/event_mappings_cache.json
+          # The mappings cache is only used when the Google Sheet fetch fails;
+          # a stale copy beats the built-in fallback, so keep it valid for 30 days.
+          GS_CACHE_TTL_SECONDS: "2592000"
+          AI_ICON_CACHE_PATH: /tmp/weekcalendar/cache/ai_icon_cache.json
+          ICONS_CACHE_DIR: /tmp/weekcalendar/icons
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadWriteImagesAndCaches
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource:
+                - !Sub "${ImageBucket.Arn}/latest/*"
+                - !Sub "${ImageBucket.Arn}/cache/*"
+            - Sid: ListCache
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ImageBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix: ["cache/*"]
+            - Sid: ReadConfig
+              Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/*"
+            - Sid: DecryptSecureStringsViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+    Metadata:
+      Dockerfile: infra/Dockerfile
+      DockerContext: ..
+      DockerTag: python3.12-v1
+
+  RenderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RenderFunction}"
+      RetentionInDays: 14
+
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: InvokeRender
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RenderFunction.Arn
+
+  DailyRenderSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-daily-render"
+      Description: Render the calendar image before the frame's nightly fetch.
+      ScheduleExpression: !Sub "cron(${RenderMinute} ${RenderHour} * * ? *)"
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: !GetAtt RenderFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"source": "schedule"}'
+        RetryPolicy:
+          MaximumRetryAttempts: 2
+          MaximumEventAgeInSeconds: 1800
+
+  # ---------------------------------------------------------------- serve
+  ServeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-serve"
+      Description: Function URL for the Inky Frame (image, status, render trigger).
+      PackageType: Zip
+      Runtime: python3.12
+      CodeUri: ../aws_lambda/
+      Handler: serve_handler.handler
+      # Long enough for ?fresh=1, which waits for a full render (max 60 s).
+      Timeout: 75
+      MemorySize: 256
+      Environment:
+        Variables:
+          RENDER_FUNCTION_NAME: !Ref RenderFunction
+          FRESH_RENDER_TIMEOUT: "65"
+      FunctionUrlConfig:
+        AuthType: NONE
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadImages
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${ImageBucket.Arn}/latest/*"
+            - Sid: ReadFrameToken
+              Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/FRAME_TOKEN"
+            - Sid: DecryptSecureStringsViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+            - Sid: TriggerRender
+              Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt RenderFunction.Arn
+
+  ServeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ServeFunction}"
+      RetentionInDays: 14
+
+Outputs:
+  FunctionUrl:
+    Description: Base URL for the frame. Image = <FunctionUrl>image.png?token=<FRAME_TOKEN>
+    Value: !GetAtt ServeFunctionUrl.FunctionUrl
+  BucketName:
+    Description: Private S3 bucket holding latest/ images and cache/
+    Value: !Ref ImageBucket
+  RenderFunctionName:
+    Value: !Ref RenderFunction
+  ServeFunctionName:
+    Value: !Ref ServeFunction

@@ -1,0 +1,16 @@
+# Allowlist for the Render Lambda image (infra/Dockerfile, context = repo root).
+*
+!infra/requirements-lambda.txt
+!main.py
+!data_provider.py
+!layout_renderer.py
+!mappings.py
+!inky_icons_package.py
+!weather_provider.py
+!aws_lambda/aws_common.py
+!aws_lambda/render_handler.py
+!assets/fonts/*.ttf
+!assets/icons/*.svg
+!assets/icons/*.png
+# debug screenshots that happen to live in the icons folder
+assets/icons/debug_*

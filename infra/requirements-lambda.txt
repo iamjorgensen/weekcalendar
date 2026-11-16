@@ -1,0 +1,8 @@
+# Runtime dependencies of the Render Lambda image (boto3 is provided by the base image).
+pillow>=10.4,<13
+requests>=2.32,<3
+python-dotenv>=1.0,<2
+resvg_py>=0.2,<1
+openai>=1.40,<3
+# zoneinfo needs tz data; the Lambda base image does not ship /usr/share/zoneinfo
+tzdata>=2024.1

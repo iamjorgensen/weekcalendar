@@ -1,0 +1,65 @@
+name: Deploy to AWS
+
+# Manual only for now: Actions tab -> "Deploy to AWS" -> Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC token for aws-actions/configure-aws-credentials
+  contents: read
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+  STACK_NAME: weekcalendar
+  SAM_CLI_TELEMETRY: "0"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run handler tests
+        run: |
+          python -m pip install -r infra/requirements-lambda.txt boto3 "moto[s3,ssm]" pytest
+          python -m pytest tests/test_aws_handlers.py -q
+
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate template
+        run: sam validate --lint -t infra/template.yaml
+
+      - name: Build
+        run: sam build -t infra/template.yaml
+
+      - name: Deploy
+        run: |
+          sam deploy \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --resolve-s3 \
+            --resolve-image-repos \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Show outputs
+        run: |
+          aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs" --output table
