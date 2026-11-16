@@ -96,11 +96,11 @@ def save_png(img, out_path="output.png"):
 def _try_render_calendar(events, opts, width=800, height=480, days=8):
     """
     Render the calendar image. Uses the design named by opts["design"] or the
-    DESIGN env var (default "hero"; "legacy" = the original layout_renderer).
+    DESIGN env var (default "dense"; "legacy" = the original layout_renderer).
     If a new design fails for any reason, falls back to the legacy layout so
     the frame always gets an image.
     """
-    design = (opts or {}).get("design") or os.environ.get("DESIGN", "hero")
+    design = (opts or {}).get("design") or os.environ.get("DESIGN", "dense")
     if design and design != "legacy":
         try:
             from designs import render_design

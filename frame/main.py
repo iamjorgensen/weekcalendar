@@ -25,6 +25,7 @@ UPDATE_TIMES = getattr(secrets, "UPDATE_TIMES", ["04:00"])   # local Oslo time
 GRACE_SECS = 120
 BUTTON_A_PIN = 12
 HTTP_TIMEOUT = 90          # a fresh render on AWS can take up to ~70 s
+BATT_FILE = "batt.txt"   # battery % measured at the end of the previous run
 IMG_PNG = "c.png"
 IMG_JPG = "c.jpg"
 TMP = "dl.tmp"
@@ -75,6 +76,26 @@ def get_sleep_mins():
 
 
 # ------------------------------------------------------------------ battery
+def save_batt():
+    """Measure the battery (only after WiFi is done!) and store it for the next run."""
+    try:
+        _, p = get_batt()
+        with open(BATT_FILE, "w") as f:
+            f.write(str(p))
+        print("Battery", p, "%")
+    except Exception as e:
+        print("Battery read failed:", e)
+
+
+def stored_batt():
+    try:
+        with open(BATT_FILE) as f:
+            p = int(f.read().strip())
+        return p if 0 <= p <= 100 else None
+    except Exception:
+        return None
+
+
 def get_batt():
     # NOTE: GPIO29 is shared with the WiFi chip. Only call this after WiFi is
     # done; WiFi stays broken until a hard reset (see end of main()).
@@ -208,50 +229,26 @@ def draw_image(path):
 
 
 def draw_status(error=None, stale=False):
-    """Small box bottom-left: time, battery, and an error/stale note if any."""
-    v, p = get_batt()
-    ts = local_now()
-    time_str = "{:02d}:{:02d}".format(ts[3], ts[4])
-    batt_str = "{}%".format(p)
-    note = ""
+    """
+    The calendar image itself shows battery and update time (drawn by AWS).
+    The frame only adds a small note in the bottom-left corner when something
+    went wrong, so you can see why the calendar might be out of date.
+    """
     if error:
-        note = "Feil: " + str(error)[:60]
+        note = "Feil: " + str(error)[:70]
     elif stale:
-        note = "Gammelt bilde"
-
+        note = "Gammelt bilde - siste oppdatering feilet"
+    else:
+        return
     g.set_font("bitmap8")
-    scale, char_h = 1, 8
-    icon_w, icon_h, pad = 24, 12, 4
-    time_w = g.measure_text(time_str, scale)
-    batt_w = g.measure_text(batt_str, scale)
-    note_w = g.measure_text(note, scale) + pad if note else 0
-    total_w = time_w + icon_w + batt_w + note_w + pad * 4
-    total_h = icon_h + pad * 2
-    bx, by = 2, 480 - total_h - 2
-    cy = by + total_h // 2
-    text_y = cy - char_h // 2
-    icon_y = cy - icon_h // 2
-
+    pad = 4
+    w = g.measure_text(note, 1) + pad * 2
+    h = 8 + pad * 2
+    x, y = 2, 480 - h - 2
     g.set_pen(WHITE)
-    g.rectangle(bx, by, total_w, total_h)
-    g.set_pen(BLACK)
-    g.text(time_str, bx + pad, text_y, scale=scale)
-
-    ix = bx + pad + time_w + pad
-    g.rectangle(ix, icon_y, icon_w, icon_h)
-    g.rectangle(ix + icon_w, icon_y + 3, 2, 6)
-    g.set_pen(WHITE)
-    g.rectangle(ix + 1, icon_y + 1, icon_w - 2, icon_h - 2)
-    g.set_pen(GREEN if p > 50 else YELLOW if p > 20 else RED)
-    fill = int((icon_w - 4) * (p / 100))
-    if fill > 0:
-        g.rectangle(ix + 2, icon_y + 2, fill, icon_h - 4)
-    g.set_pen(BLACK)
-    g.text(batt_str, ix + icon_w + pad, text_y, scale=scale)
-
-    if note:
-        g.set_pen(RED)
-        g.text(note, ix + icon_w + pad + batt_w + pad, text_y, scale=scale)
+    g.rectangle(x, y, w, h)
+    g.set_pen(RED)
+    g.text(note, x + pad, y + pad, scale=1)
 
 
 def refresh():
@@ -283,6 +280,9 @@ def do_update():
 
         print("Downloading image...")
         url = secrets.CALENDAR_URL
+        batt = stored_batt()
+        if batt is not None and "fresh=1" in url:
+            url += "&batt={}".format(batt)
         for bad in (" ", "<", ">", "\n", "\r"):
             if bad in url:
                 raise RuntimeError("CALENDAR_URL i secrets.py har ugyldig tegn (plassholder?)")
@@ -332,6 +332,7 @@ def main():
         time.sleep(0.1)
 
     do_update()
+    save_batt()   # after WiFi is off: the battery ADC pin is shared with the WiFi chip
 
     m = get_sleep_mins()
     print("Next update in {} minutes.".format(m))

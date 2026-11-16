@@ -212,4 +212,7 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
         if rise and sset:
             w0["sunrise"], w0["sunset"] = rise, sset
 
-    return {"today": today, "days": out_days, "updated": now.strftime("%H:%M")}
+    battery = data.get("battery")
+    if not isinstance(battery, int) or not 0 <= battery <= 100:
+        battery = None
+    return {"today": today, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery}

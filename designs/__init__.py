@@ -2,7 +2,7 @@
 import importlib
 import os
 
-DESIGNS = ("hero", "agenda", "band")
+DESIGNS = ("hero", "dense", "agenda", "band")
 
 
 def render_design(name, data, days, icon_manager=None, now=None):

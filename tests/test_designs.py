@@ -45,7 +45,7 @@ def test_adapter_shapes_real_data():
     assert w["periods"][0][1] == "snow" and w["sunrise"] < w["sunset"]
 
 
-@pytest.mark.parametrize("name", ["hero", "agenda", "band"])
+@pytest.mark.parametrize("name", ["hero", "dense", "agenda", "band"])
 def test_every_design_renders_real_and_empty_data(name):
     for data in (_data(), {}, {"events": [], "weather": [], "hourly_today": []}):
         img = render_design(name, data, 7, now=NOW)

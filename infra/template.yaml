@@ -42,8 +42,8 @@ Parameters:
     Description: Number of days fetched for the calendar (the design shows as many as fit).
   Design:
     Type: String
-    Default: hero
-    AllowedValues: [hero, agenda, band, legacy]
+    Default: dense
+    AllowedValues: [hero, dense, agenda, band, legacy]
     Description: Layout of the calendar image (legacy = the original Pi layout).
 
 Globals:

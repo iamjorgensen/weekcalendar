@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 from designs.blocks import day_label, event_row, weather_inline
 from designs.common import (
+    draw_battery,
     ellipsize,
     BLACK, RED, WHITE, YELLOW, W, H, MONTHS, WEEKDAYS,
     cap_height, draw_text_top, f_body, f_bold, f_tiny, is_red_day, paste_icon,
@@ -17,7 +18,7 @@ from designs.common import (
 HERO_W = 286
 
 
-def _hero(img, draw, day, updated, accent=RED):
+def _hero(img, draw, day, updated, accent=RED, battery=None):
     draw.rectangle([0, 0, HERO_W, H], fill=BLACK)
     x0, x1 = 18, HERO_W - 16
     d = day["date"]
@@ -103,6 +104,8 @@ def _hero(img, draw, day, updated, accent=RED):
     f_up = f_tiny(12)
     up = f"Oppdatert {updated}"
     draw_text_top(draw, (x1 - text_w(draw, up, f_up), H - 18), up, f_up, WHITE)
+    if battery is not None:
+        draw_battery(draw, x0, H - 18 + cap_height(draw, f_up) // 2, battery, WHITE)
 
 
 ROW = dict(size=15, icon_size=15, chip_d=16, max_lines=2, pad=3)
@@ -136,7 +139,7 @@ def render(data):
     img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
     days = data["days"]
-    _hero(img, draw, days[0], data.get("updated", ""))
+    _hero(img, draw, days[0], data.get("updated", ""), battery=data.get("battery"))
 
     gap = 12
     left = HERO_W + gap

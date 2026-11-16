@@ -88,10 +88,20 @@ def _lambda_client(timeout_s=None):
                                                 retries={"total_max_attempts": 1}))
 
 
-def _invoke_render(invocation_type, timeout_s=None):
+def _parse_battery(value):
+    try:
+        b = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return b if 0 <= b <= 100 else None
+
+
+def _invoke_render(invocation_type, timeout_s=None, extra=None):
     """Invoke the render function. Returns (ok, detail)."""
     name = os.environ["RENDER_FUNCTION_NAME"]
-    payload = json.dumps({"source": "serve-fresh" if invocation_type == "RequestResponse" else "serve-post"})
+    body = {"source": "serve-fresh" if invocation_type == "RequestResponse" else "serve-post"}
+    body.update(extra or {})
+    payload = json.dumps(body)
     lam = _lambda_client(timeout_s)
     try:
         resp = lam.invoke(FunctionName=name, InvocationType=invocation_type, Payload=payload.encode("utf-8"))
@@ -128,7 +138,9 @@ def _serve_image(path, query, context):
         ok = False
         detail = "no time left for a render"
         if budget >= 5:
-            ok, detail = _invoke_render("RequestResponse", timeout_s=budget)
+            battery = _parse_battery(query.get("batt"))
+            ok, detail = _invoke_render("RequestResponse", timeout_s=budget,
+                                        extra={"battery": battery} if battery is not None else None)
         headers["X-Render-Status"] = "fresh" if ok else "stale"
         if not ok:
             headers["X-Render-Error"] = _header_safe(detail)

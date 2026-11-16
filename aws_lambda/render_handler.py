@@ -144,6 +144,16 @@ def fetch_data(data_provider, days):
     return data_provider.initial_fetch_all(days=days)
 
 
+def last_known_battery(s3, bucket):
+    """Battery % reported by the frame on an earlier render (from meta.json), or None."""
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=META_KEY)
+        b = json.loads(obj["Body"].read()).get("battery")
+        return b if isinstance(b, int) and 0 <= b <= 100 else None
+    except Exception:
+        return None
+
+
 def render(main, mappings, data, days, errors):
     opts = dict(main.opts)
     opts["days"] = days
@@ -188,6 +198,11 @@ def handler(event, context):
         errors.append(f"fetch: {e}")
         data = {}
 
+    battery = event.get("battery")
+    if not isinstance(battery, int) or not 0 <= battery <= 100:
+        battery = last_known_battery(s3, bucket)  # e.g. a POST /render or a schedule run
+    data["battery"] = battery
+
     img = render(main, mappings, data, days, errors)
 
     out_dir = os.path.join(work_dir(), "out")
@@ -209,6 +224,7 @@ def handler(event, context):
         "duration_s": round(time.time() - t0, 2),
         "missing_params": sorted(missing),
         "errors": errors,
+        "battery": battery,
     }
     s3.put_object(Bucket=bucket, Key=META_KEY, Body=json.dumps(meta, indent=1).encode("utf-8"),
                   ContentType="application/json", CacheControl="no-store")

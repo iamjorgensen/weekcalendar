@@ -236,3 +236,19 @@ def quantize(img: Image.Image) -> Image.Image:
 def dotted_hline(draw, x0, x1, y, color=BLACK, gap=4):
     for x in range(int(x0), int(x1), gap):
         draw.point((x, y), fill=color)
+
+
+def draw_battery(draw, x, cy, pct, color=WHITE):
+    """Small battery icon + 'NN%' at (x, centre y). Fill: green > 50, yellow > 20, else red."""
+    w, h = 22, 11
+    top = cy - h // 2
+    draw.rectangle([x, top, x + w, top + h], outline=color, width=1)
+    draw.rectangle([x + w + 1, top + 3, x + w + 2, top + h - 3], fill=color)
+    fill = GREEN if pct > 50 else YELLOW if pct > 20 else RED
+    fw = int((w - 3) * pct / 100)
+    if fw > 0:
+        draw.rectangle([x + 2, top + 2, x + 1 + fw, top + h - 2], fill=fill)
+    f = f_tiny(12)
+    txt = f"{pct}%"
+    draw_text_top(draw, (x + w + 6, cy - cap_height(draw, f) // 2), txt, f, color)
+    return w + 6 + text_w(draw, txt, f)

@@ -415,3 +415,12 @@ def test_serve_unexpected_error_is_500_not_crash(served, fake_lambda, monkeypatc
     monkeypatch.setattr(serve_handler, "_serve_image", boom)
     resp = serve_handler.handler(_url_event("/image.png", query={"token": TOKEN}), FakeContext())
     assert resp["statusCode"] == 500 and "kaboom" in resp["body"]
+
+
+def test_serve_fresh_passes_battery_to_render(served, fake_lambda):
+    import json as _json
+    serve_handler.handler(_url_event("/image.png", query={"token": TOKEN, "fresh": "1", "batt": "64"}), FakeContext())
+    payload = _json.loads(fake_lambda.calls[-1]["Payload"])
+    assert payload["battery"] == 64
+    serve_handler.handler(_url_event("/image.png", query={"token": TOKEN, "fresh": "1", "batt": "999"}), FakeContext())
+    assert "battery" not in _json.loads(fake_lambda.calls[-1]["Payload"])
