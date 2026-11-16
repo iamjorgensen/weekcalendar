@@ -282,7 +282,17 @@ def do_update():
             time.sleep(5)
 
         print("Downloading image...")
-        path, status = download(secrets.CALENDAR_URL)
+        url = secrets.CALENDAR_URL
+        try:
+            path, status = download(url)
+        except Exception as e:
+            if "fresh=1" not in url:
+                raise
+            # Fresh render failed: fall back to the last image AWS has.
+            print("Fresh download failed:", e, "- fetching cached image")
+            cached = url.replace("&fresh=1", "").replace("fresh=1&", "").replace("?fresh=1", "")
+            path, status = download(cached)
+            status = "stale"
         stale = status == "stale"
         print("Got", path, status)
     except Exception as e:
