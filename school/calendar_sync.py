@@ -40,8 +40,9 @@ def family_events(session, calendar_id, start, end):
     data = _check(session.get(_url(calendar_id), params=params), "lesing").json()
     out = []
     for ev in data.get("items", []):
-        if (ev.get("extendedProperties") or {}).get("private", {}).get("source") == SOURCE:
-            continue
+        priv = (ev.get("extendedProperties") or {}).get("private", {})
+        if priv.get("source") == SOURCE and priv.get("doc") == "week":
+            continue   # weekly-letter events are replaced on re-upload, so don't show them as duplicates
         st = ev.get("start") or {}
         if st.get("date"):
             out.append((_date.fromisoformat(st["date"]), "", ev.get("summary", "")))
@@ -56,8 +57,10 @@ def family_events(session, calendar_id, start, end):
     return out
 
 
-def existing_events(session, calendar_id, child, week_id):
-    params = {"privateExtendedProperty": [f"source={SOURCE}", f"child={child}", f"week={week_id}"],
+def existing_events(session, calendar_id, scope):
+    """Events this tool wrote for a weekly letter: scope = {'week': ..., 'letter_child': ...}."""
+    params = {"privateExtendedProperty": [f"source={SOURCE}", "doc=week"] +
+                                          [f"{k}={v}" for k, v in sorted(scope.items())],
               "maxResults": 250, "showDeleted": "false", "singleEvents": "true"}
     items, token = [], None
     while True:
@@ -70,13 +73,18 @@ def existing_events(session, calendar_id, child, week_id):
             return items
 
 
-def event_body(child, week_id, item):
+def event_body(item, scope=None):
+    from school.extract import title_prefix
     d = item["date"]
+    private = {"source": SOURCE, "doc": "week" if scope else "other", "kind": item.get("kind", ""),
+               "for": ",".join(item.get("for") or [])}
+    private.update(scope or {})
     body = {
-        "summary": f"{child}: {item['title']}",
-        "description": "\n".join(x for x in (item.get("details"), f"Fra ukebrev {week_id}") if x),
-        "extendedProperties": {"private": {"source": SOURCE, "child": child, "week": week_id,
-                                           "kind": item.get("kind", "")}},
+        "summary": title_prefix(item.get("for") or []) + item["title"],
+        "description": "\n".join(x for x in (item.get("details"),
+                                              f"Fra ukebrev {scope['week']}" if scope else "Lagt inn fra dokument")
+                                 if x),
+        "extendedProperties": {"private": private},
         "transparency": "transparent",   # don't block anyone's free/busy
     }
     start = item.get("start") or ""
@@ -100,13 +108,17 @@ def event_body(child, week_id, item):
     return body
 
 
-def sync_week(session, calendar_id, child, week_id, items):
-    """Replace this child's events for this week. Returns (deleted, created)."""
-    old = existing_events(session, calendar_id, child, week_id)
+def sync_items(session, calendar_id, items, scope=None):
+    """
+    Write items. With a weekly-letter scope ({'week', 'letter_child'}), first delete the
+    events written for that same letter, so re-uploading replaces instead of duplicating.
+    Returns (deleted, created).
+    """
+    old = existing_events(session, calendar_id, scope) if scope else []
     for ev in old:
         resp = session.delete(_url(calendar_id, "/" + ev["id"]))
         if resp.status_code not in (200, 204, 404, 410):
             _check(resp, "sletting")
     for item in items:
-        _check(session.post(_url(calendar_id), json=event_body(child, week_id, item)), "oppretting")
+        _check(session.post(_url(calendar_id), json=event_body(item, scope)), "oppretting")
     return len(old), len(items)

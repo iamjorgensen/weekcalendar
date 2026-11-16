@@ -428,7 +428,7 @@ def test_serve_fresh_passes_battery_to_render(served, fake_lambda):
 
 # ------------------------------------------------------------------ school letters
 import ingest_handler  # noqa: E402
-from test_school import UKE47, FakeAnthropic, FakeSession  # noqa: E402
+from test_school import FLYER, UKE47, FakeAnthropic, FakeSession  # noqa: E402
 
 
 def _upload_event(data, content_type="application/pdf", token=TOKEN):
@@ -483,7 +483,9 @@ def test_ingest_end_to_end(aws, monkeypatch):
     assert out["ok"] and out["child"] == "Amalie" and out["week"] == "2026-W47"
     assert out["created"] == 6 and out["skipped"] == 1
     assert "Fantes fra før: Foreldremøte (03.12)" in out["message"]
-    assert "Foreldremøte 6B" in fake_ai.requests[0]["messages"][0]["content"][1]["text"]
+    content = fake_ai.requests[0]["messages"][0]["content"]
+    assert "Amalie (6. trinn), Sigrid (3. trinn)" in content[1]["text"]
+    assert "Foreldremøte 6B" in content[2]["text"]
     assert all(b["summary"].startswith("Amalie: ") for b in session.posted)
 
 
@@ -491,3 +493,24 @@ def test_ingest_reports_missing_settings(aws):
     _s3, ssm = aws
     out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/x.pdf"}, None)
     assert out["ok"] is False and "GOOGLE_SA_JSON" in out["message"]
+
+
+def test_ingest_flyer_skips_past_dates(aws, monkeypatch):
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "CHILDREN": "Amalie:6,Sigrid:3"})
+    s3.put_object(Bucket=BUCKET, Key="inbox/f.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
+    session = FakeSession([])
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda: FakeAnthropic(FLYER))
+    monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: session)
+
+    class FixedDT(ingest_handler.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return ingest_handler.datetime(2026, 11, 16, 20, 0, tzinfo=tz)
+    monkeypatch.setattr(ingest_handler, "datetime", FixedDT)
+
+    out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/f.pdf"}, None)
+    assert out["ok"] and out["week"] is None and out["created"] == 2 and out["past"] == 1
+    assert "for familien, fra dokumentet" in out["message"]
+    assert "Allerede passert: Gammel versjon (19.09.2026)" in out["message"]
+    assert [b["summary"] for b in session.posted][0] == "Frist: påmelding Barnas frimarked"

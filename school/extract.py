@@ -19,7 +19,9 @@ SUPPORTED_IMAGES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 SCHEMA = {
     "type": "object",
     "properties": {
-        "week": {"type": "integer", "description": "ISO week number the letter is about (the coming week)"},
+        "doc_type": {"type": "string", "enum": ["ukebrev", "other"],
+                     "description": "'ukebrev' = weekly letter for one class/grade; 'other' = flyer, invitation, info letter"},
+        "week": {"type": "integer", "description": "ISO week number a weekly letter is about, else 0"},
         "year": {"type": "integer", "description": "Year of that week, or 0 if the letter doesn't say"},
         "grade": {"type": "integer", "description": "School grade ('trinn'), or 0 if not stated"},
         "items": {
@@ -27,7 +29,8 @@ SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "weekday": {"type": "string", "enum": WEEKDAYS},
+                    "weekday": {"type": "string", "enum": WEEKDAYS + [""],
+                                "description": "Weekday within the letter's week, or '' when 'date' is given"},
                     "date": {"type": "string", "description": "YYYY-MM-DD if the letter gives an explicit date "
                                                               "(e.g. for something outside the week), else ''"},
                     "start": {"type": "string", "description": "HH:MM, or '' for all-day"},
@@ -37,12 +40,15 @@ SCHEMA = {
                     "bring": {"type": "array", "items": {"type": "string"},
                               "description": "Things to bring/wear that day, short words"},
                     "details": {"type": "string", "description": "One short sentence of extra info, or ''"},
+                    "for": {"type": "array", "items": {"type": "string"},
+                            "description": "Which of the family's children this applies to (names from the list); "
+                                           "empty = the whole family / not child-specific"},
                     "already_in_calendar": {"type": "boolean",
                                             "description": "true if the same thing on the same day is already "
                                                            "in the family calendar list (even if worded differently)"},
                 },
                 "required": ["weekday", "date", "start", "end", "kind", "title", "bring", "details",
-                             "already_in_calendar"],
+                             "for", "already_in_calendar"],
                 "additionalProperties": False,
             },
         },
@@ -50,30 +56,34 @@ SCHEMA = {
                            "description": "Short reminders for the whole week without a specific day"},
         "dinner_question": {"type": "string", "description": "'Middagssamtalen' question if present, else ''"},
     },
-    "required": ["week", "year", "grade", "items", "week_reminders", "dinner_question"],
+    "required": ["doc_type", "week", "year", "grade", "items", "week_reminders", "dinner_question"],
     "additionalProperties": False,
 }
 
-SYSTEM = """Du er familiens assistent. Du leser ukebrev fra en norsk barneskole og finner det foreldrene MÅ vite eller gjøre, slik at det havner i familiekalenderen.
+SYSTEM = """Du er familiens assistent. Du får et dokument fra skole, SFO, idrettslag, kommune eller lignende - et ukebrev, et informasjonsskriv, en invitasjon eller en plakat - og finner det foreldrene MÅ vite eller gjøre, slik at det havner i familiekalenderen.
+
+Dokumenttype: "ukebrev" er et ukentlig brev for én klasse/ett trinn (har som regel "Uke NN" og "N. trinn"). Alt annet er "other".
 
 Prioriter (viktigst først):
-1. Alt som starter med "Husk" eller krever handling fra foreldre: møter, foreldremøter, utviklingssamtaler, påmeldinger, frister, ting som skal signeres eller betales ("meeting"/"deadline"/"bring").
+1. Alt som krever handling fra foreldre: "Husk ...", møter, foreldremøter, utviklingssamtaler, påmeldinger, frister, ting som skal signeres eller betales ("meeting"/"deadline"/"bring"). En påmeldingsfrist blir en egen post på fristdagen, f.eks. "Frist: påmelding Barnas frimarked", og hvordan man melder på (e-post/lenke) står i "details".
 2. Skole og/eller SFO stengt, planleggingsdager, fridager ("closed").
 3. Tidligere slutt enn vanlig. Finn den vanlige sluttiden i timeplanen (den som går igjen flest dager) og ta bare med dager som slutter tidligere ("early_finish", title "Slutt 13:20", start = sluttiden).
 4. Turdager, uteskole, ekskursjoner - med det som skal tas med ("trip", utstyr i "bring").
 5. Gym/kroppsøving/svømming/fysak - dager barnet trenger gymtøy ("gym").
-6. Spesielle hendelser for barna: disco, aktivitetsdag, forestilling, kostymefest, bursdagsfeiring i klassen ("special").
+6. Arrangementer for barna eller familien: disco, aktivitetsdag, forestilling, marked, kostymefest, cup, konsert ("special") - med sted i "details" og det som må tas med i "bring".
 
-Ikke ta med: fagbeskrivelser, læringsmål, ordbank, sosiale mål, grønne tips, hva som skjedde forrige uke, kontaktinfo, lærernavn, e-postadresser, telefonnumre, bilder.
+Ikke ta med: fagbeskrivelser, læringsmål, ordbank, sosiale mål, grønne tips, hva som skjedde forrige uke, lærernavn, telefonnumre, bilder. Kontaktinfo bare når den trengs for å gjøre noe (påmelding, svar).
 
 Regler:
 - Én post per dag og aktivitet. Slå sammen det som hører sammen (tur + utstyr blir én post med utstyret i "bring").
-- Titler korte og konkrete på norsk, maks ~45 tegn, uten barnets navn (det legges på automatisk). Ta med klokkeslett i start/end når brevet oppgir det.
-- Står det en dato (f.eks. "foreldremøte torsdag 3. desember kl. 18"), bruk "date" = YYYY-MM-DD, også når det er utenfor uka.
-- Generelle påminnelser for hele uka uten bestemt dag (skiftetøy, innesko, ta med gamle klær) i "week_reminders", korte.
-- Du får også en liste over hva som allerede ligger i familiekalenderen. Sett "already_in_calendar" = true når det samme allerede står der samme dag, selv om det er formulert annerledes ("Foreldremøte" = "Foreldremøte 6B kl 18"). Ved tvil: false.
-- Ukenummer: uka brevet gjelder (overskriften, f.eks. "Uke 47"). Trinn: tallet i "6. trinn". Bruk 0 når noe ikke står i brevet.
-- Finn aldri på noe som ikke står i brevet."""
+- Titler korte og konkrete på norsk, maks ~45 tegn, uten barnenes navn (det legges på automatisk). Klokkeslett i start/end når dokumentet oppgir det.
+- Ukebrev: bruk "weekday" for dager i uka. Står det en egen dato (f.eks. "foreldremøte torsdag 3. desember kl. 18"), bruk "date" = YYYY-MM-DD.
+- Andre dokumenter: bruk alltid "date" = YYYY-MM-DD og "weekday" = "". Mangler årstall, velg første dato fra og med i dag.
+- "for": hvilke av familiens barn posten gjelder (navn fra listen). For ukebrev: barnet på det trinnet. Gjelder det alle barn/hele familien, eller er det uklart: tom liste.
+- Generelle påminnelser for hele uka uten bestemt dag (skiftetøy, innesko) i "week_reminders" (bare ukebrev), korte.
+- Du får en liste over hva som allerede ligger i familiekalenderen. Sett "already_in_calendar" = true når det samme allerede står der samme dag, selv om det er formulert annerledes ("Foreldremøte" = "Foreldremøte 6B kl 18"). Ved tvil: false.
+- Ukenummer og trinn: bare når dokumentet sier det, ellers 0.
+- Finn aldri på noe som ikke står i dokumentet."""
 
 
 class ExtractError(RuntimeError):
@@ -104,10 +114,17 @@ def format_existing(existing):
     if not existing:
         return "Familiekalenderen har ingen hendelser i perioden."
     lines = [f"- {d.isoformat()} {t + ' ' if t else ''}{title}" for d, t, title in sorted(existing)]
-    return "Dette ligger allerede i familiekalenderen:\n" + "\n".join(lines[:400])
+    return "Dette ligger allerede i familiekalenderen:\n" + "\n".join(lines[:600])
 
 
-def call_model(client, data: bytes, media_type: str, today: date, existing=None):
+def format_children(children_now):
+    """[(name, grade_now)] -> prompt text."""
+    if not children_now:
+        return "Familiens barn er ikke oppgitt."
+    return "Familiens barn: " + ", ".join(f"{n} ({g}. trinn)" for n, g in children_now) + "."
+
+
+def call_model(client, data: bytes, media_type: str, today: date, existing=None, children_now=None):
     """One Claude call with structured output. Returns the parsed dict."""
     block = content_block(data, media_type)
     response = client.messages.create(
@@ -117,6 +134,7 @@ def call_model(client, data: bytes, media_type: str, today: date, existing=None)
         output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
         messages=[{"role": "user", "content": [
             block,
+            {"type": "text", "text": format_children(children_now)},
             {"type": "text", "text": format_existing(existing)},
             {"type": "text", "text": f"Dagens dato er {today.isoformat()}. Hent ut kalenderpostene fra ukebrevet."},
         ]}],
@@ -151,6 +169,12 @@ def parse_children(spec: str):
     return out
 
 
+def children_now(children, base_year: int, today: date):
+    """Grades this school year: [(name, grade)]."""
+    shift = school_year_start(today) - base_year
+    return [(n, g + shift) for n, g in children]
+
+
 def child_for_grade(grade: int, children, base_year: int, today: date):
     """Name of the child in `grade` now, given grades as of the school year starting `base_year`."""
     shift = school_year_start(today) - base_year
@@ -174,13 +198,15 @@ def week_dates(week: int, year: int, today: date):
     return min(candidates, key=lambda d: abs((d - today).days))
 
 
-def to_calendar_items(result: dict, today: date):
-    """Model result -> list of dicts: date, start, end, title, details, kind. Plus the week id."""
+def to_calendar_items(result: dict, today: date, default_for=None):
+    """
+    Model result -> (doc_key, items). Items: date, start, end, title, details, kind,
+    for (list of child names), already_in_calendar.
+    doc_key is 'YYYY-Www' for weekly letters (used to replace a re-uploaded week), else None.
+    """
     week = int(result.get("week") or 0)
-    if not 1 <= week <= 53:
-        raise ExtractError("Fant ikke ukenummer i brevet.")
-    monday = week_dates(week, int(result.get("year") or 0), today)
-    iso_year = monday.isocalendar()[0]
+    is_week = result.get("doc_type", "ukebrev") == "ukebrev" and 1 <= week <= 53
+    monday = week_dates(week, int(result.get("year") or 0), today) if is_week else None
     items = []
     for it in result.get("items") or []:
         d = None
@@ -189,17 +215,15 @@ def to_calendar_items(result: dict, today: date):
                 d = date.fromisoformat(it["date"])
             except ValueError:
                 d = None
-        if d is None:
-            try:
-                d = monday + timedelta(days=WEEKDAYS.index(it.get("weekday")))
-            except ValueError:
-                continue
+        if d is None and monday is not None and it.get("weekday") in WEEKDAYS:
+            d = monday + timedelta(days=WEEKDAYS.index(it["weekday"]))
         title = (it.get("title") or "").strip()
-        if not title:
+        if d is None or not title:
             continue
         bring = [b.strip() for b in it.get("bring") or [] if b and b.strip()]
         if bring:
             title = f"{title} – husk {', '.join(bring)}"
+        who = [n for n in (it.get("for") or []) if n] or list(default_for or [])
         items.append({
             "date": d,
             "start": (it.get("start") or "").strip(),
@@ -207,11 +231,25 @@ def to_calendar_items(result: dict, today: date):
             "title": title,
             "details": (it.get("details") or "").strip(),
             "kind": it.get("kind") or "special",
+            "for": who,
             "already_in_calendar": bool(it.get("already_in_calendar")),
         })
     reminders = [r.strip() for r in result.get("week_reminders") or [] if r and r.strip()]
-    if reminders:
+    if reminders and monday is not None:
         items.append({"date": monday, "start": "", "end": "", "kind": "bring",
                       "title": "Husk denne uka: " + ", ".join(reminders), "details": "",
-                      "already_in_calendar": False})
-    return f"{iso_year}-W{week:02d}", items
+                      "for": list(default_for or []), "already_in_calendar": False})
+    if not is_week and not items:
+        raise ExtractError("Fant ingen datoer eller hendelser i dokumentet.")
+    doc_key = f"{monday.isocalendar()[0]}-W{week:02d}" if is_week else None
+    return doc_key, items
+
+
+def title_prefix(names):
+    """['Amalie', 'Sigrid'] -> 'Amalie og Sigrid: ' ; [] -> ''."""
+    names = [n for n in names if n]
+    if not names:
+        return ""
+    if len(names) == 1:
+        return names[0] + ": "
+    return ", ".join(names[:-1]) + " og " + names[-1] + ": "
