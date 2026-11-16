@@ -73,6 +73,12 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireUploadedLetters
+            Status: Enabled
+            Prefix: inbox/
+            ExpirationInDays: 30
 
   ImageBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -146,6 +152,52 @@ Resources:
       DockerContext: ..
       DockerTag: python3.12-v1
 
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-ingest"
+      Description: Read an uploaded school letter with Claude (Bedrock) and write events to Google Calendar.
+      PackageType: Image
+      ImageConfig:
+        Command: ["ingest_handler.handler"]
+      Timeout: 70
+      MemorySize: 512
+      Environment:
+        Variables:
+          BEDROCK_REGION: !Ref AWS::Region
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: ReadUploads
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${ImageBucket.Arn}/inbox/*"
+            - Sid: ReadConfig
+              Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/*"
+            - Sid: DecryptSecureStringsViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+            - Sid: ClaudeOnBedrock
+              Effect: Allow
+              Action: bedrock-mantle:CreateInference
+              Resource: "*"
+    Metadata:
+      Dockerfile: infra/Dockerfile
+      DockerContext: ..
+      DockerTag: python3.12-v1
+
+  IngestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${IngestFunction}"
+      RetentionInDays: 14
+
   RenderLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -210,6 +262,7 @@ Resources:
       Environment:
         Variables:
           RENDER_FUNCTION_NAME: !Ref RenderFunction
+          INGEST_FUNCTION_NAME: !Ref IngestFunction
           FRESH_RENDER_TIMEOUT: "65"
       FunctionUrlConfig:
         AuthType: NONE
@@ -241,7 +294,13 @@ Resources:
             - Sid: TriggerRender
               Effect: Allow
               Action: lambda:InvokeFunction
-              Resource: !GetAtt RenderFunction.Arn
+              Resource:
+                - !GetAtt RenderFunction.Arn
+                - !GetAtt IngestFunction.Arn
+            - Sid: StoreUploads
+              Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${ImageBucket.Arn}/inbox/*"
 
   ServeLogGroup:
     Type: AWS::Logs::LogGroup

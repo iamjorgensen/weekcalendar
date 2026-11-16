@@ -424,3 +424,70 @@ def test_serve_fresh_passes_battery_to_render(served, fake_lambda):
     assert payload["battery"] == 64
     serve_handler.handler(_url_event("/image.png", query={"token": TOKEN, "fresh": "1", "batt": "999"}), FakeContext())
     assert "battery" not in _json.loads(fake_lambda.calls[-1]["Payload"])
+
+
+# ------------------------------------------------------------------ school letters
+import ingest_handler  # noqa: E402
+from test_school import UKE47, FakeAnthropic, FakeSession  # noqa: E402
+
+
+def _upload_event(data, content_type="application/pdf", token=TOKEN):
+    ev = _url_event("/upload", method="POST", headers={"content-type": content_type, "x-run-token": token})
+    ev["body"] = base64.b64encode(data).decode("ascii")
+    ev["isBase64Encoded"] = True
+    return ev
+
+
+def test_upload_rejects_bad_token_heic_and_get(aws, fake_lambda):
+    _s3, ssm = aws
+    _put_params(ssm, {"FRAME_TOKEN": TOKEN})
+    assert serve_handler.handler(_upload_event(b"%PDF", token="nope"), FakeContext())["statusCode"] == 401
+    heic = b"\x00\x00\x00\x18ftypheic" + b"\x00" * 20
+    resp = serve_handler.handler(_upload_event(heic, "image/heic"), FakeContext())
+    assert resp["statusCode"] == 415 and "JPEG" in resp["body"]
+    assert serve_handler.handler(_url_event("/upload", query={"token": TOKEN}), FakeContext())["statusCode"] == 405
+    assert fake_lambda.calls == []
+
+
+def test_upload_stores_file_and_returns_ingest_message(aws, fake_lambda, monkeypatch):
+    s3, ssm = aws
+    _put_params(ssm, {"FRAME_TOKEN": TOKEN})
+    monkeypatch.setenv("INGEST_FUNCTION_NAME", "weekcalendar-ingest")
+    fake_lambda.on_invoke = lambda **kw: {"StatusCode": 200, "Payload": io.BytesIO(
+        json.dumps({"ok": True, "message": "La til 6 hendelser for Amalie, uke 47"}).encode())}
+    resp = serve_handler.handler(_upload_event(b"%PDF-1.7 letter"), FakeContext())
+    assert resp["statusCode"] == 200 and resp["body"] == "La til 6 hendelser for Amalie, uke 47"
+    payload = json.loads(fake_lambda.calls[-1]["Payload"])
+    assert fake_lambda.calls[-1]["FunctionName"] == "weekcalendar-ingest"
+    assert payload["key"].startswith("inbox/") and payload["key"].endswith(".pdf")
+    assert s3.get_object(Bucket=BUCKET, Key=payload["key"])["Body"].read() == b"%PDF-1.7 letter"
+
+
+def test_ingest_end_to_end(aws, monkeypatch):
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": '{"type": "service_account"}', "CALENDAR_ID": "fam@group",
+                      "CHILDREN": "Amalie:6,Sigrid:3", "CHILDREN_SCHOOL_YEAR": "2026"})
+    s3.put_object(Bucket=BUCKET, Key="inbox/a.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
+    fake_ai = FakeAnthropic(UKE47)
+    session = FakeSession([{"summary": "Foreldremøte 6B", "start": {"dateTime": "2026-12-03T17:00:00Z"}}])
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda: fake_ai)
+    monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: session)
+
+    class FixedDT(ingest_handler.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return ingest_handler.datetime(2026, 11, 16, 20, 0, tzinfo=tz)
+    monkeypatch.setattr(ingest_handler, "datetime", FixedDT)
+
+    out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf", "content_type": "application/pdf"}, None)
+    assert out["ok"] and out["child"] == "Amalie" and out["week"] == "2026-W47"
+    assert out["created"] == 6 and out["skipped"] == 1
+    assert "Fantes fra før: Foreldremøte (03.12)" in out["message"]
+    assert "Foreldremøte 6B" in fake_ai.requests[0]["messages"][0]["content"][1]["text"]
+    assert all(b["summary"].startswith("Amalie: ") for b in session.posted)
+
+
+def test_ingest_reports_missing_settings(aws):
+    _s3, ssm = aws
+    out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/x.pdf"}, None)
+    assert out["ok"] is False and "GOOGLE_SA_JSON" in out["message"]

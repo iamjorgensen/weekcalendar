@@ -163,6 +163,67 @@ def _serve_image(path, query, context):
     return _resp(200, base64.b64encode(data).decode("ascii"), ctype, headers, b64=True)
 
 
+UPLOAD_TYPES = {
+    "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png",
+    "image/webp": "webp", "image/gif": "gif", "text/plain": "txt",
+}
+MAX_UPLOAD = 5 * 1024 * 1024
+
+
+def _sniff_type(data, declared):
+    declared = (declared or "").split(";")[0].strip().lower()
+    if data[:4] == b"%PDF":
+        return "application/pdf"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[4:12] in (b"ftypheic", b"ftypheix", b"ftypmif1", b"ftyphevc"):
+        return "image/heic"
+    return declared
+
+
+def _upload(event, headers, context):
+    """Store an uploaded school letter in S3 and have the ingest function read it."""
+    body = event.get("body") or ""
+    try:
+        data = base64.b64decode(body) if event.get("isBase64Encoded") else body.encode("utf-8")
+    except Exception:
+        return _resp(400, "Kunne ikke lese opplastingen.")
+    if not data:
+        return _resp(400, "Ingen fil mottatt.")
+    if len(data) > MAX_UPLOAD:
+        return _resp(413, "Filen er for stor (maks 5 MB). Prøv et mindre bilde.")
+    ctype = _sniff_type(data, headers.get("content-type"))
+    if ctype == "image/heic":
+        return _resp(415, "HEIC-bilder støttes ikke. Legg til 'Konverter bilde til JPEG' i snarveien.")
+    ext = UPLOAD_TYPES.get(ctype)
+    if not ext:
+        return _resp(415, f"Filtypen støttes ikke ({ctype or 'ukjent'}). Send PDF, JPEG/PNG eller tekst.")
+
+    import uuid
+    key = time.strftime("inbox/%Y%m%d-%H%M%S-", time.gmtime()) + uuid.uuid4().hex[:8] + "." + ext
+    bucket = os.environ["BUCKET_NAME"]
+    aws_common.client("s3").put_object(Bucket=bucket, Key=key, Body=data, ContentType=ctype)
+
+    budget = _sync_render_budget(context)
+    lam = _lambda_client(max(5, budget))
+    try:
+        resp = lam.invoke(FunctionName=os.environ["INGEST_FUNCTION_NAME"], InvocationType="RequestResponse",
+                          Payload=json.dumps({"bucket": bucket, "key": key, "content_type": ctype}).encode("utf-8"))
+        result = json.loads(resp["Payload"].read() or b"{}")
+    except (ClientError, BotoCoreError, ValueError) as e:
+        logger.error("Ingest invoke failed: %s", e)
+        return _resp(502, "Kunne ikke behandle brevet akkurat nå. Prøv igjen senere.")
+    if resp.get("FunctionError"):
+        logger.error("Ingest function error: %s", result)
+        return _resp(500, "Feil under lesing av brevet: " + _header_safe(result.get("errorMessage", "")))
+    status = 200 if result.get("ok") else 422
+    return _resp(status, result.get("message") or "Ferdig.")
+
+
 def _serve_status():
     s3 = aws_common.client("s3")
     try:
@@ -193,7 +254,7 @@ def _handle(event, context):
     if path == "/" and method == "GET":
         return _resp(200, "weekcalendar OK")
 
-    known = set(IMAGES) | {"/status", "/render"}
+    known = set(IMAGES) | {"/status", "/render", "/upload"}
     if path not in known:
         return _resp(404, "Not found")
 
@@ -201,6 +262,14 @@ def _handle(event, context):
     if not expected:
         logger.error("FRAME_TOKEN parameter is not configured")
         return _resp(503, "Server token not configured")
+
+    if path == "/upload":
+        if method != "POST":
+            return _resp(405, "Use POST", headers={"Allow": "POST"})
+        supplied = headers.get("x-run-token", "") or query.get("token", "")
+        if not _token_ok(supplied, expected):
+            return _resp(401, "Unauthorized")
+        return _upload(event, headers, context)
 
     if path == "/render":
         if method != "POST":
