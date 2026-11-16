@@ -1027,4 +1027,4 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
     ).convert("RGB")
 
     return base
-# Removed helper function make_mockup_with_bezel as it was outside core calendar rendering.
+# Removed helper function make_mockup_with_bezel as it was outside core calendar rendering.
