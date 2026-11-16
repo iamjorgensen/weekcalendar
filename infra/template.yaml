@@ -214,6 +214,13 @@ Resources:
               Effect: Allow
               Action: s3:GetObject
               Resource: !Sub "${ImageBucket.Arn}/latest/*"
+            - Sid: ListLatest   # so a missing image is "NoSuchKey" (404), not AccessDenied
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ImageBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix: ["latest/*"]
             - Sid: ReadFrameToken
               Effect: Allow
               Action: ssm:GetParameters

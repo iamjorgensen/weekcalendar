@@ -66,6 +66,15 @@ def _resp(status, body="", content_type="text/plain; charset=utf-8", headers=Non
     return {"statusCode": status, "headers": h, "body": body, "isBase64Encoded": b64}
 
 
+def _is_missing(err):
+    # Without s3:ListBucket, S3 reports a missing key as AccessDenied instead of NoSuchKey.
+    return err.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "AccessDenied", "403")
+
+
+def _header_safe(text):
+    return "".join(c if 32 <= ord(c) < 127 else "?" for c in str(text))[:300]
+
+
 def _json(status, obj, headers=None):
     return _resp(status, json.dumps(obj), "application/json", headers)
 
@@ -90,9 +99,15 @@ def _invoke_render(invocation_type, timeout_s=None):
         logger.error("Render invoke (%s) failed: %s", invocation_type, e)
         return False, str(e)
     if resp.get("FunctionError"):
-        detail = resp["Payload"].read().decode("utf-8", "replace")[:500] if resp.get("Payload") else ""
-        logger.error("Render function error: %s", detail)
-        return False, "function error"
+        raw = resp["Payload"].read().decode("utf-8", "replace")[:2000] if resp.get("Payload") else ""
+        logger.error("Render function error: %s", raw)
+        detail = "function error"
+        try:
+            err = json.loads(raw)
+            detail = "{}: {}".format(err.get("errorType", "Error"), err.get("errorMessage", ""))
+        except (ValueError, AttributeError):
+            pass
+        return False, detail
     return True, "ok"
 
 
@@ -107,12 +122,16 @@ def _sync_render_budget(context):
 def _serve_image(path, query, context):
     key, ctype = IMAGES[path]
     headers = {}
+    detail = ""
     if query.get("fresh") in ("1", "true", "yes"):
         budget = _sync_render_budget(context)
         ok = False
+        detail = "no time left for a render"
         if budget >= 5:
-            ok, _detail = _invoke_render("RequestResponse", timeout_s=budget)
+            ok, detail = _invoke_render("RequestResponse", timeout_s=budget)
         headers["X-Render-Status"] = "fresh" if ok else "stale"
+        if not ok:
+            headers["X-Render-Error"] = _header_safe(detail)
     else:
         headers["X-Render-Status"] = "cached"
 
@@ -120,8 +139,11 @@ def _serve_image(path, query, context):
     try:
         obj = s3.get_object(Bucket=os.environ["BUCKET_NAME"], Key=key)
     except ClientError as e:
-        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
-            return _resp(404, "No image rendered yet", headers=headers)
+        if _is_missing(e):
+            msg = "No image rendered yet"
+            if detail and detail != "ok":
+                msg += " - render failed: " + detail
+            return _resp(404, msg, headers=headers)
         raise
     data = obj["Body"].read()
     if obj.get("LastModified"):
@@ -134,13 +156,21 @@ def _serve_status():
     try:
         obj = s3.get_object(Bucket=os.environ["BUCKET_NAME"], Key=META_KEY)
     except ClientError as e:
-        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+        if _is_missing(e):
             return _json(404, {"error": "no render yet"})
         raise
     return _resp(200, obj["Body"].read().decode("utf-8"), "application/json")
 
 
 def handler(event, context):
+    try:
+        return _handle(event, context)
+    except Exception as e:  # never let the Function URL turn this into a bare 502
+        logger.exception("Unhandled error")
+        return _resp(500, "Server error: {}".format(_header_safe(e)))
+
+
+def _handle(event, context):
     event = event or {}
     http = (event.get("requestContext") or {}).get("http") or {}
     method = (http.get("method") or "GET").upper()

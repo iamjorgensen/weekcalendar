@@ -386,3 +386,32 @@ def test_serve_missing_image_and_unknown_path(aws, fake_lambda):
 def test_serve_503_when_token_not_configured(aws, fake_lambda):
     resp = serve_handler.handler(_url_event("/image.png", query={"token": "anything"}), FakeContext())
     assert resp["statusCode"] == 503
+
+
+def test_serve_fresh_render_fails_and_no_image_gives_404_with_reason(aws, fake_lambda, monkeypatch):
+    """Regression: first render failed + S3 AccessDenied for a missing key used to crash (502)."""
+    from botocore.exceptions import ClientError
+    _s3, ssm = aws
+    _put_params(ssm, {"FRAME_TOKEN": TOKEN})
+    fake_lambda.on_invoke = lambda **kw: {"StatusCode": 200, "FunctionError": "Unhandled",
+                                          "Payload": io.BytesIO(b'{"errorType": "ImportError", "errorMessage": "no module x"}')}
+
+    class DeniedS3:
+        def get_object(self, **kw):
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "GetObject")
+
+    real_client = serve_handler.aws_common.client
+    monkeypatch.setattr(serve_handler.aws_common, "client",
+                        lambda name, *a, **k: DeniedS3() if name == "s3" else real_client(name, *a, **k))
+    resp = serve_handler.handler(_url_event("/image.png", query={"token": TOKEN, "fresh": "1"}), FakeContext())
+    assert resp["statusCode"] == 404
+    assert "ImportError: no module x" in resp["body"]
+    assert resp["headers"]["X-Render-Error"] == "ImportError: no module x"
+
+
+def test_serve_unexpected_error_is_500_not_crash(served, fake_lambda, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr(serve_handler, "_serve_image", boom)
+    resp = serve_handler.handler(_url_event("/image.png", query={"token": TOKEN}), FakeContext())
+    assert resp["statusCode"] == 500 and "kaboom" in resp["body"]
