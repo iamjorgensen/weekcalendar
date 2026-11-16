@@ -38,7 +38,7 @@ Parameters:
     Description: SSM Parameter Store path (without slashes) holding config and secrets.
   RenderDays:
     Type: Number
-    Default: 10
+    Default: 14
     Description: Number of days fetched for the calendar (the design shows as many as fit).
   Design:
     Type: String

@@ -14,7 +14,7 @@ from designs.common import (
     quantize, text_w, weather_icon_name,
 )
 
-HERO_W = 300
+HERO_W = 286
 
 
 def _hero(img, draw, day, updated, accent=RED):
@@ -28,7 +28,12 @@ def _hero(img, draw, day, updated, accent=RED):
     f_num = f_bold(50)
     f_mon = f_body(21)
     y = 14
-    draw_text_top(draw, (x0, y), WEEKDAYS[d.weekday()], f_day, accent if red else WHITE)
+    wd = WEEKDAYS[d.weekday()]
+    draw_text_top(draw, (x0, y), wd, f_day, accent if red else WHITE)
+    f_wk = f_tiny(15)
+    wk = f"uke {d.isocalendar()[1]}"
+    draw_text_top(draw, (x1 - text_w(draw, wk, f_wk), y + cap_height(draw, f_day) - cap_height(draw, f_wk)),
+                  wk, f_wk, WHITE)
     y += cap_height(draw, f_day) + 11
     num = str(d.day)
     draw_text_top(draw, (x0, y), num, f_num, WHITE)
@@ -81,12 +86,12 @@ def _hero(img, draw, day, updated, accent=RED):
     bottom = H - 30
     shown = 0
     for ev in day["events"]:
-        h = event_row(img, draw, x0, y, x1 - x0, ev, size=18, icon_size=20, chip_d=20,
-                      max_lines=2, draw_it=False)
+        h = event_row(img, draw, x0, y, x1 - x0, ev, size=17, icon_size=19, chip_d=19,
+                      max_lines=2, draw_it=False, pad=4)
         if y + h > bottom:
             break
-        event_row(img, draw, x0, y, x1 - x0, ev, size=18, icon_size=20, chip_d=20,
-                  max_lines=2, color=WHITE, bg=BLACK)
+        event_row(img, draw, x0, y, x1 - x0, ev, size=17, icon_size=19, chip_d=19,
+                  max_lines=2, color=WHITE, bg=BLACK, pad=4)
         y += h
         shown += 1
     rest = len(day["events"]) - shown
@@ -100,30 +105,30 @@ def _hero(img, draw, day, updated, accent=RED):
     draw_text_top(draw, (x1 - text_w(draw, up, f_up), H - 18), up, f_up, WHITE)
 
 
+ROW = dict(size=15, icon_size=15, chip_d=16, max_lines=2, pad=3)
+
+
 def _day_section(img, draw, x, y, w, day, measure=False):
     d = day["date"]
     red = is_red_day(d, day["events"])
-    fh = f_bold(17)
-    hdr_h = cap_height(draw, fh) + 12
-    rows = [event_row(img, draw, x, 0, w, ev, size=16, icon_size=16, chip_d=17,
-                      max_lines=2, draw_it=False) for ev in day["events"]]
-    empty_h = 26 if not rows else 0
-    total = hdr_h + sum(rows) + empty_h + 10
+    fh = f_bold(16)
+    hdr_h = cap_height(draw, fh) + 10
+    rows = [event_row(img, draw, x, 0, w, ev, draw_it=False, **ROW) for ev in day["events"]]
+    gap_after = 7 if rows else 3          # empty days: header only
+    total = hdr_h + sum(rows) + gap_after
     if measure:
         return total
 
     col = RED if red else BLACK
     draw_text_top(draw, (x, y + 2), day_label(d), fh, col)
     weather_inline(img, draw, x + w, y + 2 + cap_height(draw, fh) // 2, day.get("weather"),
-                   size=14, color=col, show_precip=True)
+                   size=13, color=col, show_precip=True)
     ly = y + hdr_h - 4
     draw.rectangle([x, ly, x + w, ly + 1], fill=col)
     cy = y + hdr_h
     for ev, h in zip(day["events"], rows):
-        event_row(img, draw, x, cy, w, ev, size=16, icon_size=16, chip_d=17, max_lines=2)
+        event_row(img, draw, x, cy, w, ev, **ROW)
         cy += h
-    if not rows:
-        draw_text_top(draw, (x + 22, cy + 6), "–", f_body(16), BLACK)
     return total
 
 
@@ -133,16 +138,16 @@ def render(data):
     days = data["days"]
     _hero(img, draw, days[0], data.get("updated", ""))
 
-    gap = 16
+    gap = 12
     left = HERO_W + gap
-    col_w = (W - left - gap - 10) // 2
+    col_w = (W - left - gap - 8) // 2
     cols = [left, left + col_w + gap]
-    col_i, y = 0, 12
+    col_i, y = 0, 8
     for day in days[1:]:
         h = _day_section(img, draw, 0, 0, col_w, day, measure=True)
         if y + h > H - 6:
             col_i += 1
-            y = 12
+            y = 8
             if col_i >= len(cols):
                 break
         _day_section(img, draw, cols[col_i], y, col_w, day)

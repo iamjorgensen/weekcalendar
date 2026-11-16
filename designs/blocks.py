@@ -7,7 +7,7 @@ from designs.common import (
 
 
 def event_row(img, draw, x, y, w, ev, size=17, icon_size=18, max_lines=2,
-              time_w=None, chip_d=18, draw_it=True, color=BLACK, bg=WHITE):
+              time_w=None, chip_d=18, draw_it=True, color=BLACK, bg=WHITE, pad=5):
     """
     One event: [icon] [time] title........ (A)(S)
     Returns the row height. With draw_it=False it only measures.
@@ -16,7 +16,6 @@ def event_row(img, draw, x, y, w, ev, size=17, icon_size=18, max_lines=2,
     ft = f_tiny(size - 2)
     ch = cap_height(draw, fb)
     line_gap = int(size * 0.45)
-    pad = 5
 
     cx = x
     icon_slot = icon_size + 6
