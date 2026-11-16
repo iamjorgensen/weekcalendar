@@ -111,14 +111,23 @@ WIFI_STATUS = {-3: "feil passord", -2: "fant ikke nettet", -1: "tilkobling feile
 
 def wifi_connect():
     """Connect, with one full retry. Error text includes the chip's status code."""
+    try:
+        import rp2
+        rp2.country(getattr(secrets, "WIFI_COUNTRY", "NO"))   # allow channels 12-13
+    except Exception:
+        pass
     w = network.WLAN(network.STA_IF)
     status = None
     for attempt in range(2):
         w.active(False)
         time.sleep(1)
         w.active(True)
+        try:
+            w.config(pm=0xa11140)   # disable WiFi power saving: faster, more reliable join
+        except Exception:
+            pass
         w.connect(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
-        for _ in range(30):
+        for _ in range(45):
             if w.isconnected():
                 return w
             status = w.status()
