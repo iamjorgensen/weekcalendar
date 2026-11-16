@@ -4,7 +4,7 @@ This replaces the Raspberry Pi. Two small Lambda functions in **eu-west-1 (Irela
 
 | Piece | What it does |
 |---|---|
-| **Render** function (container image) | Runs every night at **03:30 Europe/Oslo** (before the frame's ~04:00 fetch). Fetches calendar, waste pickup and weather data, renders the 800x480 image with the same code as `main.py`, writes `latest/output.png`, `latest/output.jpg` and `latest/meta.json` to a private S3 bucket. |
+| **Render** function (container image) | Runs **when the frame asks for it** (`image.png?fresh=1`, at the frame's ~04:00 wake-up and on its refresh button). Optionally also on a nightly schedule (off by default, see *Changing things*). Fetches calendar, waste pickup and weather data, renders the 800x480 image with the same code as `main.py`, writes `latest/output.png`, `latest/output.jpg` and `latest/meta.json` to a private S3 bucket. |
 | **Serve** function (small zip) with a public **Function URL** | Gives the frame the image. Every request needs the shared secret `FRAME_TOKEN`. |
 | SSM Parameter Store `/weekcalendar/*` | All config and API keys (replaces `.env`). |
 | S3 bucket | `latest/` (images + meta) and `cache/` (AI icon cache, Google Sheet mappings cache, downloaded icons). |
@@ -13,9 +13,9 @@ Endpoints (`<url>` is the `FunctionUrl` output, it ends with `/`):
 
 | Request | Result |
 |---|---|
-| `GET <url>image.png?token=…` | Latest PNG (5–15 KB). Instant. **This is what the frame should fetch.** |
+| `GET <url>image.png?token=…` | Latest PNG (5–15 KB), no new render. Instant. |
 | `GET <url>image.jpg?token=…` | Latest JPEG (120–330 KB). |
-| `GET <url>image.png?token=…&fresh=1` | Renders now, then returns the new image (for the frame's refresh button). Takes ~5–20 s, worst case ~70 s. If the render fails or is too slow you get the previous image with header `X-Render-Status: stale`. |
+| `GET <url>image.png?token=…&fresh=1` | Renders now, then returns the new image. **This is what the frame should request** (at wake-up and on the refresh button). Takes ~5–20 s, worst case ~70 s. If the render fails or is too slow you get the previous image with header `X-Render-Status: stale`. |
 | `GET <url>status?token=…` | `meta.json`: when it last rendered, event count, errors, missing parameters. |
 | `POST <url>render` with header `X-Run-Token: …` | Starts a render in the background, returns 202 at once. |
 
@@ -115,7 +115,7 @@ You can also find them later in CloudFormation -> `weekcalendar` -> Outputs.
 URL='https://<id>.lambda-url.eu-west-1.on.aws/'   # FunctionUrl output, with the trailing /
 TOKEN='<FRAME_TOKEN>'
 
-# render once now (otherwise the first image appears at 03:30)
+# render once now (otherwise the first image appears on the frame's first fresh=1 request)
 curl -i -X POST -H "X-Run-Token: $TOKEN" "${URL}render"          # -> 202
 sleep 30
 curl -s "${URL}status?token=$TOKEN"                               # -> meta.json
@@ -128,13 +128,7 @@ Open `calendar.png` and check it. `status` lists `missing_params` and `errors` i
 
 ### 7. Point the frame at AWS
 
-In the frame's config, replace the Pi URL with:
-
-```
-https://<id>.lambda-url.eu-west-1.on.aws/image.png?token=<FRAME_TOKEN>
-```
-
-and for the refresh button:
+In the frame's config, replace the Pi URL with this (used both at wake-up and for the refresh button; the frame triggers the render itself):
 
 ```
 https://<id>.lambda-url.eu-west-1.on.aws/image.png?token=<FRAME_TOKEN>&fresh=1
@@ -146,7 +140,7 @@ with an HTTP timeout of at least 60 s for the refresh request. Once that works, 
 
 ## Changing things
 
-- **Render time:** template parameters `RenderHour` (default 3) and `RenderMinute` (default 30), Europe/Oslo time (summer time handled). Change the defaults in `infra/template.yaml`, or add `--parameter-overrides RenderHour=4 RenderMinute=0` to `sam deploy` in the workflow.
+- **When it renders:** normally only when the frame requests `image.png?fresh=1`, so the frame decides the time. To also pre-render on a fixed schedule as a backup, set the template parameter `EnableSchedule` to `true` (time via `RenderHour` / `RenderMinute`, Europe/Oslo, summer time handled), e.g. `--parameter-overrides EnableSchedule=true RenderHour=3 RenderMinute=30` on `sam deploy` in the workflow.
 - **Days shown:** parameter `RenderDays` (default 7).
 - **Rotate the frame token:** update `/weekcalendar/FRAME_TOKEN`, then update the frame. The serve function picks up the new value within 5 minutes.
 - **Local test without AWS:** `pip install -r infra/requirements-lambda.txt boto3 "moto[s3,ssm]" pytest && pytest tests/test_aws_handlers.py`.
@@ -154,7 +148,7 @@ with an HTTP timeout of at least 60 s for the refresh request. Once that works, 
 
 ## Cost
 
-eu-west-1 prices, 1 render per day plus a few frame fetches. Most of this is inside the AWS free tier anyway.
+eu-west-1 prices, about 1 render per day (frame wake-up) plus refresh-button presses. Most of this is inside the AWS free tier anyway.
 
 | Service | Usage per month | Approx. cost |
 |---|---|---|
@@ -164,7 +158,7 @@ eu-west-1 prices, 1 render per day plus a few frame fetches. Most of this is ins
 | ECR (render image, ~200–300 MB) | per stored image | ~$0.03 (old images from earlier deploys add ~$0.03 each; delete old ones in ECR occasionally) |
 | S3 (< 1 MB, a few hundred requests) | | < $0.01 |
 | SSM Parameter Store (standard) + KMS `aws/ssm` key | | $0.00 |
-| EventBridge Scheduler (30 runs) | | $0.00 |
+| EventBridge Scheduler (only if `EnableSchedule=true`) | | $0.00 |
 | CloudWatch Logs (14-day retention) | a few MB | $0.00 |
 | Data transfer out (~15 KB x 100) | | $0.00 |
 | **Total** | | **≈ $0.05 / month** |

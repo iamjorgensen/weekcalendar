@@ -1,17 +1,27 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  weekcalendar - renders an 800x480 calendar image for an Inky Frame once a day
-  (Render function, container image) and serves it over a Lambda Function URL
-  (Serve function, zip). Deploy in eu-west-1.
+  weekcalendar - renders an 800x480 calendar image for an Inky Frame on request
+  (the frame calls image.png?fresh=1 when it wakes) and serves it over a Lambda
+  Function URL. Optional nightly pre-render. Deploy in eu-west-1.
+
+Conditions:
+  ScheduleEnabled: !Equals [!Ref EnableSchedule, "true"]
 
 Parameters:
+  EnableSchedule:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Also render on a fixed daily schedule. Not needed when the frame requests
+      image.png?fresh=1 (it then triggers the render itself).
   RenderHour:
     Type: Number
     Default: 3
     MinValue: 0
     MaxValue: 23
-    Description: Hour (Europe/Oslo) of the daily render. The frame fetches at about 04:00.
+    Description: Hour (Europe/Oslo) of the optional daily render (EnableSchedule=true).
   RenderMinute:
     Type: Number
     Default: 30
@@ -138,6 +148,7 @@ Resources:
 
   SchedulerRole:
     Type: AWS::IAM::Role
+    Condition: ScheduleEnabled
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -160,6 +171,7 @@ Resources:
 
   DailyRenderSchedule:
     Type: AWS::Scheduler::Schedule
+    Condition: ScheduleEnabled
     Properties:
       Name: !Sub "${AWS::StackName}-daily-render"
       Description: Render the calendar image before the frame's nightly fetch.
