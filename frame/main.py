@@ -106,15 +106,29 @@ def last_image():
 
 
 # ------------------------------------------------------------------ network
+WIFI_STATUS = {-3: "feil passord", -2: "fant ikke nettet", -1: "tilkobling feilet", 0: "ikke startet", 1: "kobler til"}
+
+
 def wifi_connect():
+    """Connect, with one full retry. Error text includes the chip's status code."""
     w = network.WLAN(network.STA_IF)
-    w.active(True)
-    w.connect(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
-    for _ in range(30):
-        if w.isconnected():
-            return w
+    status = None
+    for attempt in range(2):
+        w.active(False)
         time.sleep(1)
-    raise RuntimeError("WiFi feilet")
+        w.active(True)
+        w.connect(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
+        for _ in range(30):
+            if w.isconnected():
+                return w
+            status = w.status()
+            if status in (-3, -2):   # wrong password / no network: retrying won't help
+                break
+            time.sleep(1)
+        print("WiFi attempt", attempt + 1, "failed, status", status)
+        if status in (-3, -2):
+            break
+    raise RuntimeError("WiFi feilet ({}: {})".format(status, WIFI_STATUS.get(status, "?")))
 
 
 def download(url):
