@@ -1,0 +1,194 @@
+"""
+Shared drawing helpers for the design experiments.
+
+Everything is drawn at the panel's native 800x480 and quantized to the
+six panel colours with no dithering, so what you see is what the panel gets.
+"""
+import os
+from datetime import date
+
+from PIL import Image, ImageDraw, ImageFont
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FONTS = os.path.join(ROOT, "assets", "fonts")
+ICONS = os.path.join(ROOT, "assets", "icons")
+
+W, H = 800, 480
+
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+YELLOW = (255, 255, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+PALETTE = [BLACK, WHITE, GREEN, BLUE, RED, YELLOW]
+
+WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
+WEEKDAYS_SHORT = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"]
+MONTHS = ["januar", "februar", "mars", "april", "mai", "juni", "juli",
+          "august", "september", "oktober", "november", "desember"]
+MONTHS_SHORT = ["jan", "feb", "mar", "apr", "mai", "jun", "jul", "aug", "sep", "okt", "nov", "des"]
+
+_font_cache = {}
+
+
+def font(name: str, size: int) -> ImageFont.FreeTypeFont:
+    key = (name, size)
+    if key not in _font_cache:
+        _font_cache[key] = ImageFont.truetype(os.path.join(FONTS, name), size)
+    return _font_cache[key]
+
+
+# Font roles. Change here to try other faces everywhere at once.
+def f_body(size=17):
+    return font("Roboto-SemiBold.ttf", size)
+
+
+def f_bold(size=17):
+    return font("NotoSans-Bold.ttf", size)
+
+
+def f_tiny(size=13):
+    return font("Roboto-SemiBold.ttf", size)
+
+
+def text_w(draw, text, fnt):
+    if not text:
+        return 0
+    b = draw.textbbox((0, 0), text, font=fnt)
+    return b[2] - b[0]
+
+
+def text_box(draw, text, fnt):
+    """(left, top, right, bottom) of text drawn at (0,0)."""
+    return draw.textbbox((0, 0), text or "Hg", font=fnt)
+
+
+def draw_text_top(draw, xy, text, fnt, fill):
+    """Draw so the glyphs' visual top edge sits exactly at xy[1]."""
+    top = draw.textbbox((0, 0), "H", font=fnt)[1]
+    draw.text((xy[0], xy[1] - top), text, font=fnt, fill=fill)
+
+
+def cap_height(draw, fnt):
+    b = draw.textbbox((0, 0), "H", font=fnt)
+    return b[3] - b[1]
+
+
+def ellipsize(draw, text, fnt, max_w):
+    if text_w(draw, text, fnt) <= max_w:
+        return text
+    while text and text_w(draw, text + "…", fnt) > max_w:
+        text = text[:-1]
+    return (text.rstrip() + "…") if text else "…"
+
+
+def wrap(draw, text, fnt, max_w, max_lines):
+    words = (text or "").split()
+    lines, cur = [], ""
+    for i, w in enumerate(words):
+        cand = f"{cur} {w}".strip()
+        if text_w(draw, cand, fnt) <= max_w:
+            cur = cand
+            continue
+        if cur:
+            lines.append(cur)
+        cur = w
+        if len(lines) == max_lines:
+            break
+    if len(lines) < max_lines and cur:
+        lines.append(cur)
+    shown = sum(len(l.split()) for l in lines)
+    lines = [ellipsize(draw, l, fnt, max_w) for l in lines[:max_lines]]
+    if shown < len(words) and lines and not lines[-1].endswith("…"):
+        lines[-1] = ellipsize(draw, lines[-1] + "…", fnt, max_w)
+    return lines or [""]
+
+
+def icon(name, size, color=BLACK):
+    """Load a bundled icon tinted to a solid colour (alpha-thresholded: no grey edges)."""
+    if not name:
+        return None
+    path_png = os.path.join(ICONS, name + ".png")
+    path_svg = os.path.join(ICONS, name + ".svg")
+    im = None
+    try:
+        if os.path.isfile(path_svg):
+            import io
+            import resvg_py
+            with open(path_svg, "r", encoding="utf-8") as f:
+                svg = f.read()
+            im = Image.open(io.BytesIO(bytes(resvg_py.svg_to_bytes(svg, width=size, height=size))))
+        elif os.path.isfile(path_png):
+            im = Image.open(path_png)
+    except Exception:
+        im = None
+    if im is None:
+        return None
+    im = im.convert("RGBA")
+    if im.size != (size, size):
+        # scale up or down to fit the box, keeping aspect ratio
+        scale = size / max(im.size)
+        im = im.resize((max(1, round(im.size[0] * scale)), max(1, round(im.size[1] * scale))),
+                       Image.Resampling.LANCZOS)
+    alpha = im.split()[3].point(lambda a: 255 if a >= 110 else 0)
+    out = Image.new("RGBA", im.size, color + (255,))
+    out.putalpha(alpha)
+    return out
+
+
+def paste_icon(img, name, x, y, size, color=BLACK):
+    ic = icon(name, size, color)
+    if ic is not None:
+        img.paste(ic, (int(x), int(y)), ic)
+        return ic.size[0]
+    return 0
+
+
+WEATHER_ICON = {
+    "sol": "sun", "klart": "sun", "delvis skyet": "cloud", "skyet": "cloud",
+    "regn": "cloud-rain", "lett regn": "cloud-rain", "kraftig regn": "cloud-rain",
+    "regnbyger": "cloud-rain", "snø": "cloud-snow", "sludd": "cloud-snow",
+    "tåke": "cloud", "torden": "cloud-rain",
+}
+
+
+def weather_icon_name(symbol):
+    s = (symbol or "").lower()
+    if s in WEATHER_ICON:
+        return WEATHER_ICON[s]
+    for k, v in WEATHER_ICON.items():
+        if k in s:
+            return v
+    return "cloud"
+
+
+def person_chip(draw, x, cy, letter, color, d=20, bg=WHITE):
+    """Coloured circle with an initial, vertically centred on cy. Returns width."""
+    r = d // 2
+    outline = WHITE if color == bg == BLACK or (color == BLACK and bg == BLACK) else None
+    draw.ellipse([x, cy - r, x + d, cy + r], fill=color, outline=outline, width=2 if outline else 0)
+    fg = BLACK if color in (YELLOW, GREEN, WHITE) else WHITE
+    f = f_bold(13)
+    tw = text_w(draw, letter, f)
+    ch = cap_height(draw, f)
+    draw_text_top(draw, (x + r - tw / 2, cy - ch / 2), letter, f, fg)
+    return d
+
+
+def is_red_day(d: date, events):
+    return d.weekday() >= 5 or any(e.get("is_holiday") for e in events)
+
+
+def quantize(img: Image.Image) -> Image.Image:
+    flat = []
+    for c in PALETTE:
+        flat.extend(c)
+    pal = Image.new("P", (1, 1))
+    pal.putpalette(flat + [0] * (768 - len(flat)))
+    return img.convert("RGB").quantize(palette=pal, dither=Image.Dither.NONE).convert("RGB")
+
+
+def dotted_hline(draw, x0, x1, y, color=BLACK, gap=4):
+    for x in range(int(x0), int(x1), gap):
+        draw.point((x, y), fill=color)
