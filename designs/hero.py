@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 from designs.blocks import day_label, event_row, weather_inline
 from designs.common import (
+    ellipsize,
     BLACK, RED, WHITE, YELLOW, W, H, MONTHS, WEEKDAYS,
     cap_height, draw_text_top, f_body, f_bold, f_tiny, is_red_day, paste_icon,
     quantize, text_w, weather_icon_name,
@@ -22,58 +23,55 @@ def _hero(img, draw, day, updated, accent=RED):
     d = day["date"]
     red = is_red_day(d, day["events"])
 
-    # Big date
-    f_day = f_bold(30)
-    f_num = f_bold(64)
-    f_mon = f_body(22)
-    y = 16
+    # Date: weekday, then big day number + month (compact)
+    f_day = f_bold(26)
+    f_num = f_bold(50)
+    f_mon = f_body(21)
+    y = 14
     draw_text_top(draw, (x0, y), WEEKDAYS[d.weekday()], f_day, accent if red else WHITE)
-    y += cap_height(draw, f_day) + 14
+    y += cap_height(draw, f_day) + 11
     num = str(d.day)
     draw_text_top(draw, (x0, y), num, f_num, WHITE)
-    nx = x0 + text_w(draw, num, f_num) + 12
+    nx = x0 + text_w(draw, num, f_num) + 10
     nch = cap_height(draw, f_num)
     mch = cap_height(draw, f_mon)
     draw_text_top(draw, (nx, y + nch - mch), MONTHS[d.month - 1], f_mon, WHITE)
-    y += nch + 22
+    y += nch + 16
 
-    # Weather: big icon + temps, then morning/day/evening, then details
+    # Weather: icon + temps, morning/day/evening, then precipitation + wind on one line
     w = day.get("weather") or {}
     if w:
-        isz = 56
+        isz = 46
         paste_icon(img, weather_icon_name(w.get("symbol")), x0 - 2, y, isz, WHITE)
-        f_t = f_bold(34)
+        f_t = f_bold(30)
         tx = x0 + isz + 12
-        draw_text_top(draw, (tx, y + 2), f"{w['tmax']:.0f}°", f_t, WHITE)
-        f_s = f_body(17)
-        draw_text_top(draw, (tx, y + 2 + cap_height(draw, f_t) + 10),
-                      f"{w.get('symbol', '')}  ·  min {w['tmin']:.0f}°", f_s, WHITE)
-        y += isz + 14
+        draw_text_top(draw, (tx, y + 1), f"{w['tmax']:.0f}°", f_t, WHITE)
+        f_s = f_body(16)
+        draw_text_top(draw, (tx, y + 1 + cap_height(draw, f_t) + 8),
+                      ellipsize(draw, f"{w.get('symbol', '')}  ·  min {w['tmin']:.0f}°", f_s, x1 - tx), f_s, WHITE)
+        y += isz + 10
 
         periods = w.get("periods") or []
         if periods:
             cell = (x1 - x0) // len(periods)
-            f_lbl = f_tiny(14)
-            f_pt = f_bold(18)
+            f_lbl = f_tiny(13)
+            f_pt = f_bold(17)
             for i, (label, ic, temp) in enumerate(periods):
                 cx = x0 + i * cell
                 draw_text_top(draw, (cx, y), label, f_lbl, WHITE)
-                paste_icon(img, weather_icon_name(ic), cx, y + 20, 24, WHITE)
-                draw_text_top(draw, (cx + 30, y + 25), f"{temp:.0f}°", f_pt, WHITE)
-            y += 56
+                paste_icon(img, weather_icon_name(ic), cx, y + 17, 22, WHITE)
+                draw_text_top(draw, (cx + 27, y + 21), f"{temp:.0f}°", f_pt, WHITE)
+            y += 46
 
         f_det = f_tiny(15)
         items = [("droplet", f"{w.get('precip', 0):.1f} mm"),
                  ("wind", f"{w.get('wind', 0):.0f} m/s {w.get('wind_dir', '')}".strip())]
-        if w.get("sunrise"):
-            items.append(("sun", f"{w['sunrise']} – {w['sunset']}"))
         col_w = (x1 - x0) // 2
         for i, (ic, txt) in enumerate(items):
-            dx = x0 + (i % 2) * col_w
-            dy = y + (i // 2) * 24
-            paste_icon(img, ic, dx, dy - 3, 18, WHITE)
-            draw_text_top(draw, (dx + 24, dy), txt, f_det, WHITE)
-        y += 24 * ((len(items) + 1) // 2) + 6
+            dx = x0 + i * col_w
+            paste_icon(img, ic, dx, y - 3, 18, WHITE)
+            draw_text_top(draw, (dx + 24, y), txt, f_det, WHITE)
+        y += 24
 
     # Divider
     draw.rectangle([x0, y, x1, y + 1], fill=WHITE)
