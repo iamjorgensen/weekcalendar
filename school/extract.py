@@ -10,6 +10,8 @@ import json
 from datetime import date, timedelta
 
 MODEL = "anthropic.claude-opus-5-5"   # Claude in Amazon Bedrock (bedrock-mantle)
+# Used if MODEL is not available to the AWS account (Bedrock lists it as open to all customers)
+FALLBACK_MODELS = ["anthropic.claude-opus-4-8"]
 
 WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"]
 KINDS = ["closed", "early_finish", "trip", "gym", "bring", "special", "deadline", "meeting"]
@@ -124,11 +126,30 @@ def format_children(children_now):
     return "Familiens barn: " + ", ".join(f"{n} ({g}. trinn)" for n, g in children_now) + "."
 
 
-def call_model(client, data: bytes, media_type: str, today: date, existing=None, children_now=None):
-    """One Claude call with structured output. Returns the parsed dict."""
+def call_model(client, data: bytes, media_type: str, today: date, existing=None, children_now=None,
+               models=None):
+    """
+    One Claude call with structured output. Returns the parsed dict.
+    Tries each model in `models` (default: MODEL, then FALLBACK_MODELS) and moves on
+    only when a model is unavailable to the account (not found / no access).
+    """
+    import anthropic
+    candidates = [m for m in (models or [MODEL] + FALLBACK_MODELS) if m]
+    last = None
+    for i, model in enumerate(candidates):
+        try:
+            return _call_one(client, model, data, media_type, today, existing, children_now)
+        except (anthropic.NotFoundError, anthropic.PermissionDeniedError) as e:
+            last = e
+            if i + 1 < len(candidates):
+                continue
+    raise last
+
+
+def _call_one(client, model, data, media_type, today, existing, children_now):
     block = content_block(data, media_type)
     response = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=16000,
         system=SYSTEM,
         output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},

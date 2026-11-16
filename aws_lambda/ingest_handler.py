@@ -11,6 +11,7 @@ SSM parameters (under /weekcalendar/):
   CALENDAR_ID           family calendar (also used by the render function)
   CHILDREN              e.g. "Amalie:6,Sigrid:3"  - grade per child ...
   CHILDREN_SCHOOL_YEAR  ... in the school year starting this year (e.g. "2026"); grades advance each August
+  CLAUDE_MODEL          optional Bedrock model id (default anthropic.claude-opus-5-5, falls back to opus-4-8)
 """
 import json
 import logging
@@ -28,7 +29,7 @@ try:
 except Exception:  # pragma: no cover
     OSLO = None
 
-PARAMS = ["GOOGLE_SA_JSON", "CALENDAR_ID", "CHILDREN", "CHILDREN_SCHOOL_YEAR"]
+PARAMS = ["GOOGLE_SA_JSON", "CALENDAR_ID", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CLAUDE_MODEL"]
 
 _anthropic_client = None
 
@@ -83,8 +84,10 @@ def handler(event, context):
     kids_now = extract.children_now(children, base_year, today)
 
     try:
+        models = ([params["CLAUDE_MODEL"]] if params.get("CLAUDE_MODEL") else [extract.MODEL]) \
+            + extract.FALLBACK_MODELS
         result = extract.call_model(anthropic_client(), data, content_type, today,
-                                    existing=existing, children_now=kids_now)
+                                    existing=existing, children_now=kids_now, models=models)
         grade = int(result.get("grade") or 0)
         letter_child = extract.child_for_grade(grade, children, base_year, today) if grade else None
         doc_key, items = extract.to_calendar_items(result, today,

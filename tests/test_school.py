@@ -236,3 +236,22 @@ def test_rich_text_becomes_text_block():
     blk = extract.content_block(b"{\\rtf1\\ansi Uke 47}", "text/rtf")
     assert blk["type"] == "text" and "Uke 47" in blk["text"]
     assert extract.content_block(b"<p>Uke 47</p>", "text/html")["type"] == "text"
+
+
+def test_model_fallback_when_unavailable():
+    import anthropic
+    import httpx2 as httpx
+
+    class OneModelMissing(FakeAnthropic):
+        def create(self, **kw):
+            if kw["model"] == "anthropic.claude-opus-5-5":
+                self.requests.append(kw)
+                req = httpx.Request("POST", "https://bedrock-mantle.eu-west-1.api.aws/anthropic/v1/messages")
+                raise anthropic.NotFoundError("model does not exist",
+                                              response=httpx.Response(404, request=req), body=None)
+            return super().create(**kw)
+
+    fake = OneModelMissing(UKE47)
+    out = extract.call_model(fake, b"%PDF-1.7", "application/pdf", TODAY)
+    assert out["week"] == 47
+    assert [r["model"] for r in fake.requests] == ["anthropic.claude-opus-5-5", "anthropic.claude-opus-4-8"]
