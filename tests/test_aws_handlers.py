@@ -514,3 +514,19 @@ def test_ingest_flyer_skips_past_dates(aws, monkeypatch):
     assert "for familien, fra dokumentet" in out["message"]
     assert "Allerede passert: Gammel versjon (19.09.2026)" in out["message"]
     assert [b["summary"] for b in session.posted][0] == "Frist: påmelding Barnas frimarked"
+
+
+@pytest.mark.parametrize("data,ctype,ext", [
+    (b"{\\rtf1\\ansi Uke 47. 6. trinn}", "text/rtf", ".rtf"),
+    (b"{\\rtf1\\ansi Uke 47}", "application/octet-stream", ".rtf"),
+    (b"<html><body>Uke 47</body></html>", "", ".html"),
+    ("Uke 47. 6. trinn. Husk tur på tirsdag".encode(), "application/octet-stream", ".txt"),
+])
+def test_upload_accepts_rich_text(aws, fake_lambda, monkeypatch, data, ctype, ext):
+    _s3, ssm = aws
+    _put_params(ssm, {"FRAME_TOKEN": TOKEN})
+    monkeypatch.setenv("INGEST_FUNCTION_NAME", "weekcalendar-ingest")
+    fake_lambda.on_invoke = lambda **kw: {"StatusCode": 200, "Payload": io.BytesIO(b'{"ok": true, "message": "ok"}')}
+    resp = serve_handler.handler(_upload_event(data, ctype), FakeContext())
+    assert resp["statusCode"] == 200
+    assert json.loads(fake_lambda.calls[-1]["Payload"])["key"].endswith(ext)

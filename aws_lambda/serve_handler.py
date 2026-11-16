@@ -166,6 +166,9 @@ def _serve_image(path, query, context):
 UPLOAD_TYPES = {
     "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png",
     "image/webp": "webp", "image/gif": "gif", "text/plain": "txt",
+    # rich text from apps' share sheets (the model reads the markup fine)
+    "text/rtf": "rtf", "application/rtf": "rtf", "text/html": "html",
+    "public.rtf": "rtf", "public.html": "html", "public.plain-text": "txt",
 }
 MAX_UPLOAD = 5 * 1024 * 1024
 
@@ -182,6 +185,17 @@ def _sniff_type(data, declared):
         return "image/webp"
     if data[4:12] in (b"ftypheic", b"ftypheix", b"ftypmif1", b"ftyphevc"):
         return "image/heic"
+    head = data[:200].lstrip().lower()
+    if head.startswith(b"{\\rtf"):
+        return "text/rtf"
+    if head.startswith((b"<!doctype html", b"<html", b"<meta", b"<div", b"<p")):
+        return "text/html"
+    if declared in ("", "application/octet-stream"):
+        try:
+            data[:4096].decode("utf-8")
+            return "text/plain"
+        except UnicodeDecodeError:
+            pass
     return declared
 
 

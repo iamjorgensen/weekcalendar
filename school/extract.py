@@ -101,7 +101,7 @@ def content_block(data: bytes, media_type: str):
         return {"type": "image",
                 "source": {"type": "base64", "media_type": media_type,
                            "data": base64.standard_b64encode(data).decode("ascii")}}
-    if media_type.startswith("text/") or not media_type:
+    if media_type.startswith("text/") or media_type in ("application/rtf", "") or data[:5] == b"{\\rtf":
         try:
             return {"type": "text", "text": data.decode("utf-8")}
         except UnicodeDecodeError:

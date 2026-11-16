@@ -230,3 +230,9 @@ def test_flyer_sync_creates_without_deleting_and_without_name_prefix():
     assert b["end"]["dateTime"] == "2027-09-19T16:00:00"
     assert b["extendedProperties"]["private"]["doc"] == "other"
     assert "post@mossisentrum.no" in session.posted[0]["description"]
+
+
+def test_rich_text_becomes_text_block():
+    blk = extract.content_block(b"{\\rtf1\\ansi Uke 47}", "text/rtf")
+    assert blk["type"] == "text" and "Uke 47" in blk["text"]
+    assert extract.content_block(b"<p>Uke 47</p>", "text/html")["type"] == "text"
