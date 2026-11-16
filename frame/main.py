@@ -283,6 +283,9 @@ def do_update():
 
         print("Downloading image...")
         url = secrets.CALENDAR_URL
+        for bad in (" ", "<", ">", "\n", "\r"):
+            if bad in url:
+                raise RuntimeError("CALENDAR_URL i secrets.py har ugyldig tegn (plassholder?)")
         try:
             path, status = download(url)
         except Exception as e:
