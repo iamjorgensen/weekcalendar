@@ -64,6 +64,24 @@ def _parse_met_timeseries_json(j):
     hourly_today = []  # detailed hour-for-hour for current day (06-06 grouping we will slice later)
     props = j.get("properties", {})
     timeseries = props.get("timeseries", [])
+
+    # Last timestep that still has hourly data (with a following step 1h later).
+    # Before that we sum next_1_hours, after it next_6_hours.
+    last_hourly_step = None
+    parsed_times = []
+    for t in timeseries:
+        try:
+            parsed_times.append(datetime.fromisoformat(t.get("time", "").replace("Z", "+00:00")))
+        except Exception:
+            parsed_times.append(None)
+    for i, t in enumerate(timeseries):
+        if parsed_times[i] is not None and (t.get("data") or {}).get("next_1_hours"):
+            nxt = parsed_times[i + 1] if i + 1 < len(parsed_times) else None
+            if nxt is not None and (nxt - parsed_times[i]) <= timedelta(hours=1):
+                last_hourly_step = parsed_times[i]
+    if last_hourly_step is None:
+        last_hourly_step = datetime.min.replace(tzinfo=timezone.utc)
+
     for t in timeseries:
         time_str = t.get("time")
         if not time_str:
@@ -112,17 +130,21 @@ def _parse_met_timeseries_json(j):
             except Exception:
                 pass
 
-        # precipitation from period details
-        for period in ("next_1_hours", "next_6_hours", "next_12_hours"):
-            p = data.get(period)
-            if p and isinstance(p, dict):
-                details = p.get("details", {})
-                p_amt = details.get("precipitation_amount")
-                if p_amt is not None:
-                    try:
-                        day["precip"] += float(p_amt)
-                    except Exception:
-                        pass
+        # precipitation: MET steps are hourly for the first ~2.5 days, then
+        # 6-hourly. Count only the period that matches the step spacing so
+        # overlapping 1h/6h/12h amounts are not added together.
+        if dt <= last_hourly_step:
+            period_key = "next_1_hours"
+        else:
+            period_key = "next_6_hours"
+        p = data.get(period_key)
+        if p and isinstance(p, dict):
+            p_amt = (p.get("details") or {}).get("precipitation_amount")
+            if p_amt is not None:
+                try:
+                    day["precip"] += float(p_amt)
+                except Exception:
+                    pass
 
         # symbol
         symbol = None
@@ -187,6 +209,7 @@ def _fetch_open_meteo(lat, lon, days, timeout=15):
         "latitude": lat, "longitude": lon,
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode,windspeed_10m_max,winddirection_10m_dominant",
         "forecast_days": days,
+        "wind_speed_unit": "ms",  # match MET (m/s); Open-Meteo defaults to km/h
         "timezone": "auto"
     }
     r = requests.get(OM_URL, params=params, timeout=timeout)
@@ -310,7 +333,7 @@ def get_forecast_json(lat=DEFAULT_LAT, lon=DEFAULT_LON, days=DEFAULT_DAYS, user_
                 dt = datetime.fromisoformat(h["time"])
             except Exception:
                 continue
-            dt_local = _to_local = dt.astimezone()
+            dt_local = dt.astimezone()
             day_key = _day_key_06_to_06(dt_local)
             if day_key == today.strftime("%Y-%m-%d"):
                 filtered.append(h)

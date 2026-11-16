@@ -79,8 +79,12 @@ def _ensure_font(path: str, size: int):
     try:
         if path and os.path.isfile(path):
             font = ImageFont.truetype(path, int(size))
-            # ADD THIS LINE: It forces the font to snap to pixels
-            font.set_variation_by_name('Regular') 
+            # Variable fonts (e.g. InterVariable.ttf) need an explicit instance;
+            # static fonts raise here, which previously discarded the font.
+            try:
+                font.set_variation_by_name('Regular')
+            except Exception:
+                pass
             return font
     except Exception:
         pass
@@ -446,6 +450,109 @@ def draw_event_tags(draw: ImageDraw.ImageDraw, start_x: int, top_y: int, ev: dic
 
 # ---------------- Measurement helpers ---------------------------------------
 
+TAG_PADDING_X = 8
+TAG_PADDING_Y = 3
+TAG_GAP = 8
+
+
+def _event_tags_for_layout(event: dict) -> list:
+    """Tags as draw_event_tags will see them (structured tags or legacy comma tag_text)."""
+    tags = event.get("tags") or []
+    if not tags:
+        raw = (event.get("tag_text") or event.get("tag") or "").strip()
+        tags = [{"text": p.strip()} for p in raw.split(",") if p.strip()]
+    return tags
+
+
+def _layout_event_text(event: dict,
+                       draw: ImageDraw.ImageDraw,
+                       font: ImageFont.ImageFont,
+                       small_font: ImageFont.ImageFont,
+                       width: int,
+                       event_icon_slot: int,
+                       icon_gap: int,
+                       max_event_lines: int) -> dict:
+    """
+    Single source of truth for how an event row's text is laid out.
+    Used both when measuring box heights and when drawing, so the two always agree.
+
+    Returns dict with:
+      time, time_w, name_offset (x offset of the name from the row's left edge),
+      lines (list of str), line_heights (list of int), spacing_px, total_text_h
+    """
+    time = event.get("time") or ""
+    time_w = _text_width(draw, time, small_font) if time else 0
+    name_offset = event_icon_slot + icon_gap + (time_w + 6 if time else 0)
+    text_avail = max(8, width - name_offset - 8)
+
+    # Space reserved on the first line for tag chips (max half the line)
+    tag_total_w = 0
+    tag_count = 0
+    for t in _event_tags_for_layout(event):
+        txt = (t.get("text") or "").strip()
+        if not txt:
+            continue
+        chip_w = _text_width(draw, txt, small_font) + TAG_PADDING_X * 2
+        extra = chip_w + (TAG_GAP if tag_count > 0 else 0)
+        if tag_total_w + extra > text_avail // 2:
+            break
+        tag_total_w += extra
+        tag_count += 1
+    reserved_for_tags = tag_total_w + (6 if tag_total_w > 0 else 0)
+    first_max_w = max(8, text_avail - reserved_for_tags)
+
+    name = (event.get("display_text") or event.get("name") or "") or ""
+    words = name.split()
+    first_line = ""
+    rest_text = ""
+    for idx_w, w in enumerate(words):
+        cand = (first_line + " " + w).strip() if first_line else w
+        if _text_width(draw, cand, font) <= first_max_w:
+            first_line = cand
+            rest_text = " ".join(words[idx_w + 1:])
+        else:
+            rest_text = " ".join(words[idx_w:])
+            break
+    if not first_line and words:
+        # First word alone is too wide: truncate it rather than dropping the text
+        first_line = _ellipsize(draw, words[0], font, first_max_w)
+        rest_text = " ".join(words[1:])
+
+    remaining = []
+    if rest_text and max_event_lines > 1:
+        remaining = _wrap_text_to_lines(draw, rest_text, font, text_avail, max_event_lines - 1)
+    elif rest_text:
+        first_line = _ellipsize(draw, first_line + " " + rest_text, font, first_max_w)
+
+    lines = [first_line] + remaining
+
+    # Mark truncation when the text did not fit in max_event_lines
+    shown_words = sum(len(ln.split()) for ln in lines)
+    if words and shown_words < len(words) and not lines[-1].endswith("…"):
+        last_w = first_max_w if len(lines) == 1 else text_avail
+        lines[-1] = _ellipsize(draw, lines[-1] + "…", font, last_w)
+
+    line_heights = []
+    for ln in lines:
+        try:
+            bbox = draw.textbbox((0, 0), ln if ln else "X", font=font)
+            line_heights.append(bbox[3] - bbox[1])
+        except Exception:
+            line_heights.append(getattr(font, "size", 12))
+    spacing_px = max(2, int(line_heights[0] * 0.12))
+    total_text_h = sum(line_heights) + spacing_px * (len(line_heights) - 1)
+
+    return {
+        "time": time,
+        "time_w": time_w,
+        "name_offset": name_offset,
+        "lines": lines,
+        "line_heights": line_heights,
+        "spacing_px": spacing_px,
+        "total_text_h": total_text_h,
+    }
+
+
 def _measure_row_height(event: dict,
                         nominal_vspacing: int,
                         min_icon_padding: int,
@@ -455,99 +562,24 @@ def _measure_row_height(event: dict,
                         inner_text_width: int,
                         event_icon_slot: int,
                         icon_gap: int,
-                        max_event_lines: int) -> int:
-    """
-    Compute the vertical space required for one event row, aligned with render_events_section logic.
-    """
-    # Define tag constants used for layout estimation within this function scope
-    tag_padding_x = 8
-    tag_padding_y = 3
-    tag_gap = 8
-
+                        max_event_lines: int,
+                        layout: dict = None) -> int:
+    """Vertical space required for one event row (same layout as render_events_section)."""
     requested_icon_size = event.get("icon_size") or event.get("icon_size_px") or max(12, event_icon_slot - 4)
     base_row = max(nominal_vspacing, requested_icon_size + min_icon_padding)
 
-    time = event.get("time") or ""
-    time_w = _text_width(draw, time, small_font) if time else 0
-
-    left_reserved = event_icon_slot + icon_gap + (time_w + 6 if time_w else 0)
-    text_avail = max(8, inner_text_width - left_reserved)
-
-    name = (event.get("display_text") or event.get("name") or "") or ""
-
-    # --- Tag parsing logic must be duplicated for accurate measurement ---
-    tags_for_measure = event.get("tags") or []
-    tag_text = event.get("tag_text") or event.get("tag") or None
-    if not tags_for_measure and tag_text:
-        rawt = (tag_text or "").strip()
-        parts = [p.strip() for p in rawt.split(",") if p.strip()]
-        if parts:
-            tags_for_measure = [{"text": p} for p in parts] # Minimal tags for size calc
-
-    tag_total_w = 0
-    tag_count = 0
-    for t in tags_for_measure:
-        txt = (t.get("text") or "").strip()
-        if not txt: continue
-        try:
-            bbox = draw.textbbox((0, 0), txt, font=small_font)
-            tw = bbox[2] - bbox[0]
-        except Exception:
-            tw = _text_width(draw, txt, small_font)
-        chip_w = tw + tag_padding_x * 2
-        if tag_total_w + chip_w + (tag_gap if tag_count > 0 else 0) > text_avail // 2: break
-        if tag_count > 0: tag_total_w += tag_gap
-        tag_total_w += chip_w
-        tag_count += 1
-    if tag_total_w > text_avail // 2: tag_total_w = text_avail // 2
-    reserved_for_tags = tag_total_w + (6 if tag_total_w > 0 else 0)
-    # --- End Tag parsing logic ---
-
-    name_max_width = max(8, text_avail - reserved_for_tags)
-    words = (name or "").split()
-    first_line = ""
-    rest_text = ""
-    for idx_w, w in enumerate(words):
-        cand = (first_line + " " + w).strip() if first_line else w
-        if _text_width(draw, cand, font) <= name_max_width:
-            first_line = cand
-            rest_text = " ".join(words[idx_w+1:])
-        else:
-            rest_text = " ".join(words[idx_w:])
-            break
-    if not first_line and words:
-        first_line = _ellipsize(draw, words[0], font, name_max_width)
-        rest_text = " ".join(words[1:]) if len(words) > 1 else ""
-
-    remaining_lines = []
-    if rest_text:
-        remaining_lines = _wrap_text_to_lines(draw, rest_text, font, max(8, text_avail), max(0, max_event_lines - 1))
-
-    lines = [first_line] + remaining_lines
-    if not lines: lines = [""]
-
-    line_heights = []
-    for ln in lines:
-        try:
-            bbox = draw.textbbox((0, 0), ln if ln else "X", font=font)
-            line_h = bbox[3] - bbox[1]
-        except Exception:
-            line_h = getattr(font, "size", 12)
-        line_heights.append(line_h)
-
-    spacing_px = max(2, int((line_heights[0] if line_heights else getattr(font, "size", 12)) * 0.12))
-    total_text_h = sum(line_heights)
-    if len(line_heights) > 1:
-        total_text_h += spacing_px * (len(line_heights) - 1)
+    if layout is None:
+        layout = _layout_event_text(event, draw, font, small_font, inner_text_width,
+                                    event_icon_slot, icon_gap, max_event_lines)
 
     try:
         chip_bbox = draw.textbbox((0, 0), "X", font=small_font)
         chip_text_h = chip_bbox[3] - chip_bbox[1]
     except Exception:
         chip_text_h = getattr(small_font, "size", 12)
-    chip_h_est = max(10, chip_text_h + (tag_padding_y * 2))
+    chip_h_est = max(10, chip_text_h + (TAG_PADDING_Y * 2))
 
-    needed_row = max(base_row, total_text_h + min_icon_padding, chip_h_est + min_icon_padding)
+    needed_row = max(base_row, layout["total_text_h"] + min_icon_padding, chip_h_est + min_icon_padding)
     return int(needed_row)
 
 
@@ -624,8 +656,6 @@ def _gather_weather_values(entry: dict):
     if precip is not None:
         try:
             precip_f = float(precip)
-            # FIX: Divide by 10 to correct for tenths of mm scaling, as requested.
-            precip_f /= 10.0 
             precip_text = f"{precip_f:.1f} mm"
         except Exception:
             precip_text = str(precip)
@@ -664,10 +694,6 @@ def render_events_section(image: Image.Image, x: int, y: int, width: int, events
     draw = ImageDraw.Draw(image)
     cursor_y = y
 
-    tag_padding_x = 8
-    tag_padding_y = 3
-    tag_gap = 8
-
     if small_font is None:
         small_font = _ensure_font(DEFAULT_FONT, max(10, getattr(font, "size", 12) - 2))
     if tag_font is None:
@@ -677,129 +703,52 @@ def render_events_section(image: Image.Image, x: int, y: int, width: int, events
     dot_rgb = _normalize_color_input(dot_color) if dot_color is not None else (0, 0, 0)
 
     for i, ev in enumerate(events):
-        name = ev.get("display_text") or ev.get("name") or ""
-        time = ev.get("time") or ""
         icon_name = ev.get("icon")
         requested_icon_size = ev.get("icon_size") or ev.get("icon_size_px") or max(12, event_icon_slot - 4)
 
-        # --- row height ---
-        line_height = _measure_row_height(
-            ev, event_vspacing, min_icon_padding, draw, font, small_font,
-            width - 16, event_icon_slot, icon_gap, max_event_lines
-        )
+        # Same layout as used by _measure_box_height_for_date (same width!)
+        layout = _layout_event_text(ev, draw, font, small_font, width,
+                                    event_icon_slot, icon_gap, max_event_lines)
+        line_height = _measure_row_height(ev, event_vspacing, min_icon_padding, draw, font, small_font,
+                                          width, event_icon_slot, icon_gap, max_event_lines, layout=layout)
 
-        # --- icon sizing ---
-        icon_display_h = max(10, int(line_height * 0.80))
-        if icon_display_h > requested_icon_size:
-            icon_display_h = requested_icon_size
-
-        text_x = x + event_icon_slot + icon_gap
-        text_w_avail = width - event_icon_slot - icon_gap - 8
-
-        # --- draw icon ---
+        # --- icon ---
+        icon_display_h = min(max(10, int(line_height * 0.80)), requested_icon_size)
         if icon_name:
             icon_im = _load_icon_image(icon_name, icon_display_h, icon_manager=icon_manager)
             if icon_im:
                 icon_prepared = _resize_to_height_and_pad(icon_im, icon_display_h, pad_square=icon_pad_square)
-                icon_to_draw = _tint_icon_to_color(icon_prepared, body_rgb)
+                icon_to_draw = _tint_icon_to_color(icon_prepared, body_rgb) if tint_event_icons else icon_prepared
                 iw, ih = icon_to_draw.size
                 slot_x = x + max(0, (event_icon_slot - iw) // 2)
                 icon_y = cursor_y + line_height // 2 - ih // 2
                 image.paste(icon_to_draw, (slot_x, icon_y), icon_to_draw)
 
-        # --- measure first line height (for vertical centering) ---
-        try:
-            bbox_1st = draw.textbbox((0, 0), name if name else "X", font=font)
-            line_h_1st = bbox_1st[3] - bbox_1st[1]
-        except Exception:
-            line_h_1st = getattr(font, "size", 12)
+        # --- text block, vertically centred as a whole within the row ---
+        lines = layout["lines"]
+        line_heights = layout["line_heights"]
+        spacing_px = layout["spacing_px"]
+        text_top = cursor_y + (line_height - layout["total_text_h"]) // 2
+        name_x = x + layout["name_offset"]
 
-        # 🔧 NEW: vertically centered baseline for text + time
-        text_baseline_y = cursor_y + (line_height - line_h_1st) // 2
+        if layout["time"]:
+            draw.text((x + event_icon_slot + icon_gap, text_top), layout["time"],
+                      font=small_font, fill=body_rgb)
 
-        # --- draw time ---
-        name_x = text_x
-        if time:
-            time_w = _text_width(draw, time, small_font)
-            draw.text(
-                (x + event_icon_slot + icon_gap, text_baseline_y),  # CHANGED
-                time,
-                font=small_font,
-                fill=body_rgb
-            )
-            name_x = x + event_icon_slot + icon_gap + time_w + 6
+        ln_y = text_top
+        for idx, ln in enumerate(lines):
+            draw.text((name_x, ln_y), ln, font=font, fill=body_rgb)
+            ln_y += line_heights[idx] + spacing_px
 
-        max_text_width = width - (name_x - x) - 8
-
-        # --- tag measurement (first line) ---
-        tags_for_measure = ev.get("tags") or []
-        tag_text_raw = ev.get("tag_text") or ev.get("tag")
-        if not tags_for_measure and tag_text_raw:
-            tags_for_measure = [{"text": p.strip()} for p in tag_text_raw.split(",") if p.strip()]
-
-        tag_total_w = 0
-        tag_count = 0
-        for t in tags_for_measure:
-            txt = (t.get("text") or "").strip()
-            if not txt:
-                continue
-            tw = _text_width(draw, txt, small_font)
-            chip_w = tw + tag_padding_x * 2
-            if tag_total_w + chip_w > max_text_width // 2:
-                break
-            if tag_count > 0:
-                tag_total_w += tag_gap
-            tag_total_w += chip_w
-            tag_count += 1
-
-        reserved_for_tags = tag_total_w + (6 if tag_total_w else 0)
-        name_max_width = max(8, text_w_avail - reserved_for_tags)
-
-        # --- wrap text ---
-        words = name.split()
-        first_line = ""
-        rest_text = ""
-        for idx, w in enumerate(words):
-            cand = (first_line + " " + w).strip() if first_line else w
-            if _text_width(draw, cand, font) <= name_max_width:
-                first_line = cand
-            else:
-                rest_text = " ".join(words[idx:])
-                break
-
-        remaining_lines = []
-        if rest_text:
-            remaining_lines = _wrap_text_to_lines(
-                draw, rest_text, font, max_text_width, max_event_lines - 1
-            )
-
-        lines = [first_line] + remaining_lines if first_line else [""]
-
-        # --- draw first line (VERTICALLY CENTERED) ---
-        draw.text(
-            (name_x, text_baseline_y),  # CHANGED
-            lines[0],
-            font=font,
-            fill=body_rgb
-        )
-
-        # --- draw tags ---
-        displayed_name_w = _text_width(draw, lines[0], font)
-        tag_top = cursor_y + (line_height // 2) - (tag_font.size // 2)
-        tag_start_x = name_x + displayed_name_w + 6
+        # --- tags after the first line, centred on it ---
+        displayed_name_w = _text_width(draw, lines[0], font) if lines[0] else 0
+        tag_top = text_top + line_heights[0] // 2 - getattr(tag_font, "size", 12) // 2
+        tag_start_x = name_x + displayed_name_w + (6 if displayed_name_w else 0)
         draw_event_tags(
             draw, tag_start_x, tag_top, ev, tag_font,
-            padding_x=tag_padding_x, padding_y=tag_padding_y,
-            gap=tag_gap, max_x=x + width - 4
+            padding_x=TAG_PADDING_X, padding_y=TAG_PADDING_Y,
+            gap=TAG_GAP, max_x=x + width - 4
         )
-
-        # --- draw wrapped lines ---
-        if len(lines) > 1:
-            spacing_px = max(2, int(line_h_1st * 0.12))
-            ln_y = text_baseline_y + line_h_1st + spacing_px
-            for ln in lines[1:]:
-                draw.text((name_x, ln_y), ln, font=font, fill=body_rgb)
-                ln_y += line_h_1st + spacing_px
 
         # --- advance cursor ---
         prev_cursor = cursor_y
@@ -934,7 +883,9 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
                 col_tops[current_col] = y + h + gap
                 placed = True
                 break
-        if not placed: continue
+        if not placed:
+            # Out of space: stop here so no later day is shown after a missing one
+            break
 
     for date_key, (x, y, box_h) in placements.items():
         hx0, hy0 = x + border_thickness, y + border_thickness
@@ -942,7 +893,13 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         header_fill_rect = [hx0, hy0, hx1, hy1]
         day_events = groups.get(date_key, [])
 
-        is_public_holiday = any((ev.get("name") or "").lower().startswith("fridag") for ev in day_events)
+        is_public_holiday = any(
+            ev.get("is_holiday")
+            or (ev.get("name") or "").lower().startswith("fridag")
+            or (ev.get("original_name") or "").lower().startswith("fridag")
+            for ev in day_events
+        )
+        box_header_text_rgb = header_text_rgb
         draw_header_fill = header_fill_rgba
         try:
             dt = datetime.fromisoformat(date_key)
@@ -953,7 +910,7 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
         except Exception: pass
         
         if draw_header_fill[:3] != header_fill_rgba[:3]:
-            header_text_rgb = (255, 255, 255)
+            box_header_text_rgb = (255, 255, 255)
 
         try: draw.rounded_rectangle(header_fill_rect, radius=box_radius, fill=draw_header_fill)
         except Exception: draw.rectangle(header_fill_rect, fill=draw_header_fill)
@@ -971,7 +928,7 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
             months = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"]
             pretty = f"{wk[dt.weekday()]} {dt.day} {months[dt.month - 1]}"
         except Exception: pass
-        draw.text((x + box_header_padding, y + 3), pretty, font=bold_font, fill=header_text_rgb)
+        draw.text((x + box_header_padding, y + 3), pretty, font=bold_font, fill=box_header_text_rgb)
 
         weather_entry = next((w for w in data.get("weather", []) if w.get("date") == date_key), None)
         if weather_entry:
@@ -987,14 +944,14 @@ def render_calendar(data: dict, width: int, height: int, days: int = 8, renderer
                 if text_x < min_x: return r_x
                 if icon_im:
                     icon_prep = _resize_to_height_and_pad(icon_im, icon_h, pad_square=True)
-                    icon_tint = _tint_icon_to_color(icon_prep, header_text_rgb)
+                    icon_tint = _tint_icon_to_color(icon_prep, box_header_text_rgb)
                     iw, ih = icon_tint.size
                     icon_x = text_x - iw - 6
                     if icon_x < min_x:
-                        draw.text((text_x, y + 6), text, font=font_for_text, fill=header_text_rgb)
+                        draw.text((text_x, y + 6), text, font=font_for_text, fill=box_header_text_rgb)
                         return text_x - gap_between_parts
                     base.paste(icon_tint, (icon_x, y + ((box_header_height - ih) // 2)), icon_tint)
-                draw.text((text_x, y + 6), text, font=font_for_text, fill=header_text_rgb)
+                draw.text((text_x, y + 6), text, font=font_for_text, fill=box_header_text_rgb)
                 return (icon_x if icon_im else text_x) - gap_between_parts
 
             if temp_text: right_x = _draw_icon_and_text_right("thermometer", temp_text, right_x, y, small_icon_size, weather_tag_font)

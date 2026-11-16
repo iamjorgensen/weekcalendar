@@ -14,6 +14,7 @@ Kjør som skript for rask feilsøking:
   python data_provider.py
 """
 import os
+import json
 import requests
 from datetime import datetime, timedelta, timezone
 import re
@@ -36,8 +37,17 @@ CALENDAR_ID = os.environ.get("CALENDAR_ID", "")
 HOLIDAYS_CALENDAR_ID = os.environ.get("HOLIDAYS_CALENDAR_ID","")
 MOVAR_API_TOKEN = os.environ.get("MOVAR_API_TOKEN", "")
 MOVAR_BASE = os.environ.get("MOVAR_BASE", "")
-LAT = float(os.environ.get("LAT", ""))
-LON = float(os.environ.get("LON", ""))
+def _env_float(name, default=None):
+    raw = os.environ.get(name, "")
+    try:
+        return float(raw) if raw.strip() else default
+    except ValueError:
+        print(f"[WARN] {name}={raw!r} is not a number; using {default}")
+        return default
+
+# Fall back to weather_provider's defaults when LAT/LON are not set
+LAT = _env_float("LAT", 59.4376)
+LON = _env_float("LON", 10.6432)
 KOMMUNENR = os.environ.get("KOMMUNENR", "")
 MOVAR_GATENAVN = os.environ.get("MOVAR_GATENAVN", "")
 MOVAR_HUSNR = os.environ.get("MOVAR_HUSNR", "")
@@ -48,12 +58,13 @@ DEFAULT_DAYS = int(os.environ.get("DEFAULT_DAYS", "14"))
 
 # --- Configuration ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+AI_ICON_CACHE_PATH = os.environ.get(
+    "AI_ICON_CACHE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai_icon_cache.json")
+)
 
-# DEBUG: Verify key loading
 if not OPENAI_API_KEY:
-    print("[DEBUG] WARNING: OPENAI_API_KEY is empty or not found in .env")
-else:
-    print(f"[DEBUG] OpenAI API Key detected (starts with {OPENAI_API_KEY[:5]}...)")
+    print("[INFO] OPENAI_API_KEY not set: AI icon suggestions disabled")
 
 def _format_birthday_display(text: str):
     """
@@ -87,23 +98,54 @@ def _format_birthday_display(text: str):
     return f"{name} {age} år"
 
 
+_ai_icon_cache = None
+
+
+def _load_ai_icon_cache():
+    global _ai_icon_cache
+    if _ai_icon_cache is None:
+        try:
+            with open(AI_ICON_CACHE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            _ai_icon_cache = data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            _ai_icon_cache = {}
+    return _ai_icon_cache
+
+
+def _save_ai_icon_cache():
+    try:
+        tmp = AI_ICON_CACHE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_ai_icon_cache or {}, f, ensure_ascii=False, indent=1, sort_keys=True)
+        os.replace(tmp, AI_ICON_CACHE_PATH)
+    except OSError as e:
+        print(f"[AI Icon] could not write cache: {e}")
+
+
 def get_ai_suggested_icon(summary: str):
     """
-    Uses OpenAI to suggest a Lucide icon name.
-    Input text is often in Norwegian.
+    Return a Lucide icon name for an event summary (often Norwegian).
+    Results, including "no answer", are cached on disk so each distinct
+    summary is sent to OpenAI at most once.
     """
     if not OPENAI_API_KEY:
-        # We don't print here to avoid spamming if the key is missing
         return None
 
-    # This log tells you the fallback is actually starting
+    key = re.sub(r"\s+", " ", summary or "").strip().lower()
+    if not key:
+        return None
+    cache = _load_ai_icon_cache()
+    if key in cache:
+        return cache[key] or None
+
     print(f"[AI Icon] No local mapping for '{summary}'. Asking OpenAI...")
-    
+
     try:
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system", 
@@ -114,12 +156,16 @@ def get_ai_suggested_icon(summary: str):
             temperature=0,
             max_tokens=10
         )
-        suggestion = response.choices[0].message.content.strip().lower()
-        # Clean up potential extra words or dots
-        suggestion = suggestion.split()[0].replace(".", "").replace("'", "")
-        print(f"[AI Icon] SUCCESS: Suggested '{suggestion}' for '{summary}'")
+        raw = (response.choices[0].message.content or "").strip().lower()
+        # Keep only a valid Lucide-style name: lowercase letters, digits, hyphens
+        first = raw.split()[0] if raw.split() else ""
+        suggestion = re.sub(r"[^a-z0-9-]", "", first).strip("-") or None
+        print(f"[AI Icon] Suggested {suggestion!r} for '{summary}'")
+        cache[key] = suggestion
+        _save_ai_icon_cache()
         return suggestion
     except Exception as e:
+        # Network/API errors are not cached, so the next run retries
         print(f"[AI Icon Error] {e}")
         return None
 
@@ -689,11 +735,11 @@ def _split_tag_text_into_tokens(raw):
     if len(s_clean) <= 30 and " " not in s_clean:
         return [s_clean]
     # Try to capture capitalized words (Norwegian chars included)
-    caps = re.findall(r"\\b[A-ZÆØÅ][a-zæøåA-ZÆØÅ\\-']+\\b", s_clean)
+    caps = re.findall(r"\b[A-ZÆØÅ][a-zæøåA-ZÆØÅ\-']+\b", s_clean)
     if caps:
         return caps
     # Fallback: split on spaces and punctuation
-    parts = [p.strip() for p in re.split(r"[,;/\\-\\:]+|\\s+", s_clean) if p.strip()]
+    parts = [p.strip() for p in re.split(r"[,;/\-:]+|\s+", s_clean) if p.strip()]
     return parts
 
 def _ensure_rgb(rgb_like):
@@ -753,6 +799,7 @@ def normalize_event(ev):
         out['icon_color_rgb'] = _ensure_rgb(ev.get('icon_color_rgb') or ev.get('icon_color'))
 
         out['icon_mode'] = ev.get('icon_mode') or ev.get('mode') or None
+        out['is_holiday'] = bool(ev.get('is_holiday'))
 
         tags = []
         for t in ev.get('tags') or ev.get('structured_tags') or []:
@@ -1287,135 +1334,18 @@ def initial_fetch_all(days=DEFAULT_DAYS, session=None, gatenavn=None, husnr=None
                     ev["name"] = ev["display_text"]
         except Exception:
             pass
-# DEBUG: dump first weather entry for debugging and produce hourly preview + period picks
-        try:
-            if weather:
-                print("[DEBUG weather sample] first weather entry:", weather[0])
-            else:
-                print("[DEBUG weather sample] weather list empty")
-            print("[DEBUG hourly_today sample] len:", len(hourly))
-        except Exception:
-            print("[DEBUG] failed to print weather debug")
-
-            # compact preview of first 24 entries
-            try:
-                print("[DEBUG hourly entries preview] (index, time, cond, temp, precip)")
-                for i, h in enumerate((hourly or [])[:24]):
-                    t = h.get("time") or h.get("dt") or h.get("datetime") or h.get("hour") or "<no-time>"
-                    cond = h.get("condition") or h.get("symbol") or h.get("weather") or ""
-                    temp = h.get("temp") or h.get("temperature") or None
-                    precip = h.get("precip") if h.get("precip") is not None else h.get("precip_mm", None)
-                    print(f"  {i:02d}: {t} | {cond!r:30} | temp={str(temp):>6} | precip={str(precip)}")
-            except Exception as ex:
-                print("[DEBUG] failed to print hourly summary:", ex)
-
-            # quick representative selection check (simple heuristics)
-            try:
-                def _norm_cond_key(cond):
-                    if not cond:
-                        return "cloud"
-                    c = str(cond).lower()
-                    if "rain" in c or "regn" in c or "byge" in c:
-                        return "rain"
-                    if "snow" in c or "snø" in c:
-                        return "snow"
-                    if "sun" in c or "klar" in c:
-                        return "sun"
-                    if "thun" in c or "lyn" in c:
-                        return "thunder"
-                    if "fog" in c or "tåke" in c:
-                        return "fog"
-                    if "cloud" in c or "sky" in c or "skyet" in c:
-                        return "cloud"
-                    return "cloud"
-
-                def _choose_for_period(hours):
-                    if not hours:
-                        return None
-                    rank = {"sun":0, "cloud":1, "rain":2, "snow":3, "thunder":4}
-                    best = None
-                    best_rank = -1
-                    for hh in hours:
-                        key = _norm_cond_key(hh.get("condition") or hh.get("symbol") or hh.get("weather"))
-                        r = rank.get(key, 1)
-                        precip = hh.get("precip") or hh.get("precip_mm") or 0.0
-                        if best is None or (r > best_rank) or (r == best_rank and (precip or 0) > (best.get("precip") or 0)):
-                            best_rank = r
-                            best = {"hour": hh, "key": key, "precip": precip}
-                    return best
-
-                # naive split by hour-of-day; fallback to index-based distribution if no proper time field
-                periods = {"morning":[], "lunch":[], "day":[], "evening":[]}
-                for idx, hh in enumerate(hourly or []):
-                    t = hh.get("time")
-                    hour = None
-                    if isinstance(t, str):
-                        try:
-                            hour = int(datetime.fromisoformat(t.replace("Z", "+00:00")).hour)
-                        except Exception:
-                            hour = None
-                    elif isinstance(t, (int, float)):
-                        try:
-                            hour = int(t)
-                        except Exception:
-                            hour = None
-                    if hour is None:
-                        # distribute by index along 24h
-                        pos = idx % 24
-                        hour = pos
-
-                    if 6 <= hour <= 10:
-                        periods["morning"].append(hh)
-                    elif 11 <= hour <= 13:
-                        periods["lunch"].append(hh)
-                    elif 14 <= hour <= 17:
-                        periods["day"].append(hh)
-                    else:
-                        periods["evening"].append(hh)
-
-                for name in ("morning","lunch","day","evening"):
-                    rep = _choose_for_period(periods[name])
-                    if rep:
-                        hh = rep["hour"]
-                        t = hh.get("time") or hh.get("dt") or "<no-time>"
-                        print(f"[DEBUG chosen] {name:7} -> {t} {rep['key']} precip={rep['precip']}")
-                    else:
-                        print(f"[DEBUG chosen] {name:7} -> <no data>")
-            except Exception as ex:
-                print("[DEBUG] rep selection failed:", ex)
-
-        except Exception as ex:
-            print("[DEBUG] hourly debug block failed:", ex)
+        # DEBUG: weather sample
+        if weather:
+            print("[DEBUG weather sample] first weather entry:", weather[0])
+        else:
+            print("[DEBUG weather sample] weather list empty")
+        print("[DEBUG hourly_today sample] len:", len(hourly or []))
 
         return {"events": events, "weather": weather, "hourly_today": hourly, "meta": meta}
 
     finally:
         if session is None:
             s.close()
-
-
-# --------------------------------------------------------------------
-# debug main
-# --------------------------------------------------------------------
-if __name__ == "__main__":
-    out = initial_fetch_all(days=14)
-    print("Events count:", len(out.get("events", [])))
-    for e in out.get("events", [])[:100]:
-        print(e)
-
-    print("\nDetailed debug preview (first 40):")
-    for e in out.get("events", [])[:40]:
-        print("----")
-        print("date:", e.get("date"))
-        print("name:", e.get("name"))
-        print("display_text:", repr(e.get("display_text")))
-        print("tag_text:", repr(e.get("tag_text")))
-        print("tag_color_name:", repr(e.get("tag_color_name")))
-        print("tag_color_rgb:", repr(e.get("tag_color_rgb")))
-        print("tags:", repr(e.get("tags")))
-        print("icon:", repr(e.get("icon")))
-        print("icon_color_name:", repr(e.get("icon_color_name")))
-        print("icon_color_rgb:", repr(e.get("icon_color_rgb")))
 
 
 def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=None):
@@ -1428,6 +1358,8 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
 
     session = session or requests.Session()
     cal_id = calendar_id or HOLIDAYS_CALENDAR_ID
+    if not cal_id:
+        return []
     # ensure '#' is URL encoded for use in URL
     encoded_cal_id = cal_id.replace("#", "%23")
 
@@ -1513,7 +1445,7 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
                         "icon_color_rgb": mapped.get("icon_color_rgb"),
                         "icon_mode": mapped.get("mode"),
                         "original_name": summary,
-            "is_holiday": True,  # explicit holiday flag
+                        "is_holiday": True,  # explicit holiday flag
                     }
                     if not any(e['date'] == ev['date'] and e['name'] == ev['name'] and e.get('time','') == ev['time'] for e in holidays):
                         holidays.append(ev)
@@ -1543,7 +1475,7 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
                             "icon_mode": mapped.get("mode"),
                             "original_name": summary,
-            "is_holiday": True,  # explicit holiday flag
+                        "is_holiday": True,  # explicit holiday flag
                         }
 
                         if not any(e['date'] == ev['date'] and e['name'] == ev['name'] and e.get('time','') == ev['time'] for e in holidays):
@@ -1575,7 +1507,7 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
                         "icon_color_rgb": mapped.get("icon_color_rgb"),
                         "icon_mode": mapped.get("mode"),
                         "original_name": summary,
-            "is_holiday": True,  # explicit holiday flag
+                        "is_holiday": True,  # explicit holiday flag
                     }
 
                     if not any(e['date'] == ev['date'] and e['name'] == ev['name'] and e.get('time','') == ev['time'] for e in holidays):
@@ -1585,27 +1517,27 @@ def fetch_google_holiday_events(calendar_id=None, days=DEFAULT_DAYS, session=Non
     except Exception as ex:
         print("[fetch_google_holiday_events] exception:", ex)
         return []
-    
-def initial_fetch_all(days=DEFAULT_DAYS, session=None, gatenavn=None, husnr=None):
-    """ Master fetch function that combines all your logic """
-    s = session or requests.Session()
-    try:
-        fractions = fetch_fraction_names(session=s)
-        waste = fetch_tommekalender_events(fractions, days=days, session=s, gatenavn=gatenavn, husnr=husnr)
-        gcal = fetch_google_calendar_events(days=days, session=s)
-        
-        # Merge all events
-        all_events = gcal + waste
-        all_events.sort(key=lambda e: (e['date'], e.get('time', '')))
 
-        weather, hourly, meta = fetch_weather_from_provider(lat=LAT, lon=LON, days=days)
-        
-        return {
-            "events": all_events,
-            "weather": weather,
-            "hourly_today": hourly,
-            "meta": meta
-        }
-    finally:
-        if session is None:
-            s.close()
+
+# --------------------------------------------------------------------
+# debug main
+# --------------------------------------------------------------------
+if __name__ == "__main__":
+    out = initial_fetch_all(days=14)
+    print("Events count:", len(out.get("events", [])))
+    for e in out.get("events", [])[:100]:
+        print(e)
+
+    print("\nDetailed debug preview (first 40):")
+    for e in out.get("events", [])[:40]:
+        print("----")
+        print("date:", e.get("date"))
+        print("name:", e.get("name"))
+        print("display_text:", repr(e.get("display_text")))
+        print("tag_text:", repr(e.get("tag_text")))
+        print("tag_color_name:", repr(e.get("tag_color_name")))
+        print("tag_color_rgb:", repr(e.get("tag_color_rgb")))
+        print("tags:", repr(e.get("tags")))
+        print("icon:", repr(e.get("icon")))
+        print("icon_color_name:", repr(e.get("icon_color_name")))
+        print("icon_color_rgb:", repr(e.get("icon_color_rgb")))

@@ -6,11 +6,11 @@ Krev: pip install pillow requests
 """
 
 import argparse
+import os
 from pathlib import Path
 
 from data_provider import initial_fetch_all
 from layout_renderer import render_calendar
-from inky_adapter import display_on_inky_if_available, save_png
 from inky_icons_package import IconManager
 from mappings import EVENT_MAPPINGS
 
@@ -54,20 +54,40 @@ opts["event_mappings"] = EVENT_MAPPINGS
 opts["tint_event_icons"] = True
 
 
+def _atomic_save(img, out_path, fmt, **kwargs):
+    """
+    Write to a temp file and rename into place, so the web server never
+    serves a half-written image while a render is in progress.
+    """
+    out_path = Path(out_path)
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    img.save(tmp, fmt, **kwargs)
+    os.replace(tmp, out_path)
+    return out_path
+
+
 def save_jpeg_fast(img, out_path="output.jpg"):
     """
-    Optimized for Inky Frame Spectra 7:
-    Forces 100% quality and disables Chroma Subsampling to keep 
-    text edges razor-sharp and prevent color 'bleeding'.
+    JPEG for the Inky Frame: quality=100 and no chroma subsampling to keep
+    text edges sharp. Note: this is ~300+ KB, more than a Pico W's RAM.
     """
-    # Ensure the image is in RGB mode (required for JPEG)
     img = img.convert("RGB")
-    
-    # quality=100: Prevents compression artifacts (shadings)
-    # subsampling=0: The 'Secret Sauce' that stops color bleeding/blurring
-    img.save(out_path, "JPEG", quality=100, subsampling=0)
-    
-    print(f"Saved Ultra-Crisp JPEG: {out_path}")
+    _atomic_save(img, out_path, "JPEG", quality=100, subsampling=0)
+    size_kb = os.path.getsize(out_path) // 1024
+    print(f"Saved JPEG: {out_path} ({size_kb} KB)")
+    if size_kb > 200:
+        print(f"[WARN] JPEG is {size_kb} KB; frames that buffer the download in RAM may fail to show it")
+    return out_path
+
+
+def save_png(img, out_path="output.png"):
+    """
+    Lossless PNG. The image is already quantized to the 6 panel colours, so
+    this is typically ~15-30 KB and has no JPEG artifacts.
+    """
+    img = img.convert("RGB")
+    _atomic_save(img, out_path, "PNG", optimize=True)
+    print(f"Saved PNG: {out_path} ({os.path.getsize(out_path) // 1024} KB)")
     return out_path
 
 # save_spritesheet and finalize_image_for_inky related functions are removed.
@@ -102,6 +122,7 @@ def main(argv=None):
     parser.add_argument("--days", type=int, default=7, help="How many days to fetch")
     # Removed --out-png argument
     parser.add_argument("--out-jpg", type=str, default="output.jpg", help="Output JPEG path")
+    parser.add_argument("--out-png", type=str, default="output.png", help="Output PNG path (empty to skip)")
     # Removed --out-bin argument
     parser.add_argument("--debug-bezel", action="store_true", help="Also create mockup with bezel")
     parser.add_argument("--no-inky", action="store_true", help="Do not attempt to display on Inky even if available")
@@ -146,17 +167,20 @@ def main(argv=None):
         else:
             raise RuntimeError("render_calendar did not return an image")
 
-    # Produce JPEG (fast)
+    ok = True
     try:
         save_jpeg_fast(img, out_path=args.out_jpg)
     except Exception as e:
         print("save_jpeg_fast failed:", e)
+        ok = False
+    if args.out_png:
         try:
-            # Note: args.out_jpg is guaranteed to exist due to argparse default.
-            img.convert("RGB").save(args.out_jpg, "JPEG", quality=100, subsampling=0)
-            print("Saved JPG via PIL fallback:", args.out_jpg)
-        except Exception as e2:
-            print("Failed to save JPG fallback:", e2)
+            save_png(img, out_path=args.out_png)
+        except Exception as e:
+            print("save_png failed:", e)
+            ok = False
+    if not ok:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
