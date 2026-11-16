@@ -76,6 +76,8 @@ def get_sleep_mins():
 
 # ------------------------------------------------------------------ battery
 def get_batt():
+    # NOTE: GPIO29 is shared with the WiFi chip. Only call this after WiFi is
+    # done; WiFi stays broken until a hard reset (see end of main()).
     v = machine.ADC(29).read_u16() * (9.9 / 65535)
     p = int((v - 3.2) * 100 / (4.2 - 3.2))
     return v, min(100, max(0, p))
@@ -322,6 +324,11 @@ def main():
     print("Next update in {} minutes.".format(m))
     gc.collect()
     inky_frame.sleep_for(m)
+    # On battery the frame powers off above and never gets here. On USB power
+    # sleep_for only waits, so do a full hardware reset: reading the battery
+    # (ADC on GPIO29, shared with the WiFi chip) leaves WiFi unusable until a
+    # hard reset, and a fresh boot runs main.py again cleanly.
+    machine.reset()
 
 
 if __name__ == "__main__":
