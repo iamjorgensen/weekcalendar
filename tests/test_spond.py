@@ -193,3 +193,17 @@ def test_only_accepted_never_wipes_when_members_unknown(aws, monkeypatch):
     errors = []
     res = render_handler.sync_calendar_feeds(s3, BUCKET, errors, force=True, cfg=cfg)
     assert session.deleted == [] and "error" in res["spond-G1"] and errors
+
+
+def test_spond_test_action_reports(aws, monkeypatch):
+    import school.calendar_sync as cs
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "SPOND_EMAIL": "a@b.no", "SPOND_PASSWORD": "pw"})
+    assert "error" in render_handler.handler({"action": "spond_test"}, None)          # nothing saved yet
+    config_store.save(s3, BUCKET, _spond_cfg())
+    monkeypatch.setattr(spond_client, "login", lambda e, p: "tok")
+    monkeypatch.setattr(spond_client, "events", lambda tok, gid, **k: EVENTS)
+    monkeypatch.setattr(cs, "session_from_service_account", lambda info: Session())
+    rep = render_handler.handler({"action": "spond_test"}, None)
+    assert rep["groups_on"] == ["JR IK G16"] and rep["errors"] == []
+    assert rep["result"]["spond-G1"]["name"] == "Spond: JR IK G16" and rep["result"]["spond-G1"]["found"] == 2   # the one without a title is dropped

@@ -272,6 +272,32 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
     return result
 
 
+def spond_test():
+    """Run the Spond part of the feed sync now and report what happened (admin 'Test Spond nå')."""
+    bucket = os.environ["BUCKET_NAME"]
+    s3 = aws_common.client("s3")
+    import config_store
+    cfg = config_store.load(s3, bucket)
+    if cfg is None:
+        return {"error": "Innstillingene fra admin-siden er ikke lagret ennå (trykk «Lagre endringer»)"}
+    sp = cfg.get("spond") or {}
+    report = {"spond_on": bool(sp.get("on")),
+              "groups_on": [g.get("name") for g in sp.get("groups", []) if g.get("on")]}
+    if not report["spond_on"] or not report["groups_on"]:
+        report["error"] = "«Hent fra Spond» eller ingen grupper er slått på i de lagrede innstillingene"
+        return report
+    errors = []
+    try:
+        res = sync_calendar_feeds(s3, bucket, errors, force=True, cfg=cfg) or {}
+    except Exception as e:
+        logger.exception("Spond test crashed")
+        errors.append(f"{type(e).__name__}: {e}")
+        res = {}
+    report["result"] = {k: v for k, v in res.items() if k.startswith("spond")}
+    report["errors"] = errors
+    return report
+
+
 def spond_cleanup(event):
     """
     Old events from Spond's own calendar sync in the family calendar.
@@ -299,6 +325,8 @@ def handler(event, context):
     event = event or {}
     if event.get("action") == "spond_cleanup":
         return spond_cleanup(event)
+    if event.get("action") == "spond_test":
+        return spond_test()
     bucket = os.environ["BUCKET_NAME"]
     days = int(os.environ.get("RENDER_DAYS", "7"))
     errors = []

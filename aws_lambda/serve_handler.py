@@ -348,6 +348,10 @@ def _admin_api(path, method, event, headers):
         except spond_client.SpondError as e:
             return _json(502, {"error": str(e)})
 
+    if path == "/api/spond/test" and method == "POST":
+        result = _call_render({"action": "spond_test"})
+        return _json(200, result)
+
     if path == "/api/spond/cleanup" and method in ("GET", "POST"):
         # Old events from Spond's own calendar sync: GET lists them, POST {"ids": [...]} deletes those.
         payload = {"action": "spond_cleanup"}

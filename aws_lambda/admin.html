@@ -157,6 +157,8 @@
         Krever SPOND_EMAIL og SPOND_PASSWORD i Parameter Store.</p>
       <div class="card" id="spond"></div>
       <button class="btn" onclick="loadSpondGroups()">Hent grupper fra Spond</button>
+      <button class="btn" onclick="testSpond()">Test Spond nå</button>
+      <pre id="spond-test" class="small" style="display:none;white-space:pre-wrap;background:#fff;border-radius:10px;padding:10px;margin-top:8px"></pre>
       <h2>Rydd opp gamle Spond-hendelser</h2>
       <p class="hint">Finner hendelser som Spond sin egen kalendersynk har lagt i familiekalenderen (et år bakover og fremover). Ingenting slettes før du trykker «Slett valgte».</p>
       <div class="card" id="spond-clean" style="display:none"></div>
@@ -384,6 +386,21 @@ async function loadSpondGroups() {
   }
   if (added) dirty();
   renderSpond(); toast(added ? `${added} nye grupper – slå på de du vil ha` : "Ingen nye grupper");
+}
+
+async function testSpond() {
+  if (isDirty) return toast("Lagre endringene først");
+  const box = $("#spond-test"); box.style.display = ""; box.textContent = "Kjører Spond-synk … (opptil et halvt minutt)";
+  const r = await api("/api/spond/test", { method: "POST" }); const j = await r.json().catch(() => ({}));
+  const lines = [];
+  if (j.error) lines.push("FEIL: " + j.error);
+  if (j.groups_on) lines.push("Grupper på: " + (j.groups_on.join(", ") || "ingen"));
+  for (const v of Object.values(j.result || {})) {
+    lines.push(v.error ? `${v.name}: FEIL ${v.error}`
+      : `${v.name}: ${v.found} funnet i Spond · ${v.created} nye · ${v.updated} endret · ${v.deleted} slettet · ${v.skipped} fantes fra før`);
+  }
+  for (const e of j.errors || []) lines.push("Feil: " + e);
+  box.textContent = lines.join("\n") || JSON.stringify(j);
 }
 
 let spondOld = [];
