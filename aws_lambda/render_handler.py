@@ -311,8 +311,11 @@ def spond_cleanup(event):
         return {"error": "GOOGLE_SA_JSON/CALENDAR_ID mangler"}
     session = session_from_service_account(json.loads(params["GOOGLE_SA_JSON"]))
     today = datetime.now(timezone.utc).date()
+    q = str(event.get("q") or "").strip()[:80]
+    if q and len(q) < 3:
+        return {"error": "Søk med minst 3 tegn"}
     found = feeds.find_foreign(session, params["CALENDAR_ID"], today - timedelta(days=365),
-                               today + timedelta(days=365))
+                               today + timedelta(days=365), title=q)
     ids = event.get("delete")
     if ids:
         n = feeds.delete_ids(session, params["CALENDAR_ID"], ids, {e["id"] for e in found})

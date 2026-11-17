@@ -299,10 +299,10 @@ def _mentions(ev, marker):
     return marker in hay
 
 
-def find_foreign(session, calendar_id, start, end, marker="spond"):
+def find_foreign(session, calendar_id, start, end, marker="spond", title=""):
     """
     Events in the family calendar that some other tool put there (e.g. Spond's own
-    calendar sync) and that mention `marker`. Events this tool wrote are never included.
+    calendar sync) and that mention `marker` - or, with `title`, whose title contains it. Events this tool wrote are never included.
     Returns [{id, summary, start}] sorted by start.
     """
     params = {"timeMin": f"{start.isoformat()}T00:00:00Z", "timeMax": f"{end.isoformat()}T23:59:59Z",
@@ -316,7 +316,8 @@ def find_foreign(session, calendar_id, start, end, marker="spond"):
             priv = (ev.get("extendedProperties") or {}).get("private", {})
             if priv.get("source", "").startswith("weekcalendar"):
                 continue
-            if _mentions(ev, marker.lower()):
+            hit = (title.lower() in (ev.get("summary") or "").lower()) if title else _mentions(ev, marker.lower())
+            if hit:
                 st = ev.get("start") or {}
                 found.append({"id": ev["id"], "summary": ev.get("summary", ""),
                               "start": st.get("dateTime") or st.get("date") or ""})

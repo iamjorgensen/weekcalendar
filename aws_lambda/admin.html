@@ -162,6 +162,7 @@
       <h2>Rydd opp gamle Spond-hendelser</h2>
       <p class="hint">Finner hendelser som Spond sin egen kalendersynk har lagt i familiekalenderen (et år bakover og fremover). Ingenting slettes før du trykker «Slett valgte».</p>
       <div class="card" id="spond-clean" style="display:none"></div>
+      <input id="so-q" placeholder="Søk på tittel (valgfritt), f.eks. JR IK" style="margin-bottom:8px">
       <button class="btn" onclick="findSpondOld()">Finn gamle Spond-hendelser</button>
     </section>
 
@@ -404,10 +405,11 @@ async function testSpond() {
   box.textContent = lines.join("\n") || JSON.stringify(j);
 }
 
-let spondOld = [];
+let spondOld = [], spondQ = "";
 async function findSpondOld() {
   toast("Leter i kalenderen …");
-  const r = await api("/api/spond/cleanup"); const j = await r.json().catch(() => ({}));
+  spondQ = $("#so-q").value.trim();
+  const r = await api("/api/spond/cleanup?q=" + encodeURIComponent(spondQ)); const j = await r.json().catch(() => ({}));
   if (!r.ok) return toast(j.error || "Kunne ikke lese kalenderen");
   spondOld = j.events || [];
   renderSpondOld();
@@ -434,7 +436,7 @@ async function deleteSpondOld() {
   if (!ids.length) return toast("Ingen valgt");
   if (!confirm(`Slette ${ids.length} hendelser fra familiekalenderen?`)) return;
   toast("Sletter …");
-  const r = await api("/api/spond/cleanup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+  const r = await api("/api/spond/cleanup?q=" + encodeURIComponent(spondQ), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return toast(j.error || "Sletting feilet");
   toast(`Slettet ${j.deleted} – lager nytt bilde`);

@@ -354,7 +354,7 @@ def _admin_api(path, method, event, headers):
 
     if path == "/api/spond/cleanup" and method in ("GET", "POST"):
         # Old events from Spond's own calendar sync: GET lists them, POST {"ids": [...]} deletes those.
-        payload = {"action": "spond_cleanup"}
+        payload = {"action": "spond_cleanup", "q": str((event.get("queryStringParameters") or {}).get("q") or "")[:80]}
         if method == "POST":
             try:
                 body = event.get("body") or ""

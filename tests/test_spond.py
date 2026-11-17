@@ -141,7 +141,7 @@ def test_admin_cleanup_endpoint(aws, monkeypatch):
     assert r["statusCode"] == 200 and json.loads(r["body"])["events"][0]["id"] == "old1"
     r = _api("/api/spond/cleanup", method="POST", body={"ids": ["old1"]})
     assert r["statusCode"] == 200 and json.loads(r["body"]) == {"deleted": 1}
-    assert calls[1] == {"action": "spond_cleanup", "delete": ["old1"]} and calls[2][0] == "render"
+    assert calls[1] == {"action": "spond_cleanup", "q": "", "delete": ["old1"]} and calls[2][0] == "render"
     assert _api("/api/spond/cleanup", method="POST", body={"ids": "x"})["statusCode"] == 400
 
 
@@ -213,3 +213,17 @@ def test_description_names_the_group():
     ev = spond_client.to_feed_events([{"id": "E1", "heading": "Trening", "startTimestamp": "2026-11-20T16:00:00Z"}],
                                      "JR IK G16")[0]
     assert ev["description"] == "Fra Spond: JR IK G16"
+
+
+def test_cleanup_title_search(aws, monkeypatch):
+    import school.calendar_sync as cs
+    _s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group"})
+    old = {"id": "jr1", "summary": "JR IK - Trening mandag", "start": {"dateTime": "2026-11-23T10:30:00+01:00"}}
+    s = Session(manual=[old, FAMILY, OURS, SPOND_OLD])
+    monkeypatch.setattr(cs, "session_from_service_account", lambda info: s)
+    res = render_handler.handler({"action": "spond_cleanup", "q": "jr ik"}, None)
+    assert [e["id"] for e in res["events"]] == ["jr1"]               # title match, never our own events
+    assert "error" in render_handler.handler({"action": "spond_cleanup", "q": "jr"}, None)
+    res = render_handler.handler({"action": "spond_cleanup", "q": "JR IK", "delete": ["jr1", "fam1"]}, None)
+    assert res == {"deleted": 1} and s.deleted == ["jr1"]
