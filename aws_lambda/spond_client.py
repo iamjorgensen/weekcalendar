@@ -3,6 +3,7 @@ Minimal client for Spond's (unofficial) API, stdlib only so the small serve
 function can use it too. Same endpoints as the open-source `spond` package:
   POST core/v1/auth2/login {email, password} -> {"accessToken": {"token": ...}}
   GET  core/v1/groups/
+  GET  core/v1/profile
   GET  core/v1/sponds/?groupId=&minEndTimestamp=&maxStartTimestamp=&max=
 """
 import json
@@ -48,6 +49,30 @@ def groups(token):
         out.append({"id": g.get("id"), "name": g.get("name") or "",
                     "subGroups": [{"id": s.get("id"), "name": s.get("name") or ""} for s in g.get("subGroups") or []]})
     return out
+
+
+def my_member_ids(token, group_list=None):
+    """
+    Member ids in the account's groups that are "us": the account holder's own
+    membership, or members (children) the account holder is guardian for.
+    """
+    me = (_request("GET", "profile", token) or {}).get("id")
+    if not me:
+        raise SpondError("Fant ikke Spond-profilen din")
+    ids = set()
+    for g in (group_list if group_list is not None else _request("GET", "groups/", token)) or []:
+        for m in g.get("members") or []:
+            prof = (m.get("profile") or {}).get("id")
+            guardians = {(gd.get("profile") or {}).get("id") for gd in m.get("guardians") or []}
+            if prof == me or me in guardians:
+                ids.add(m.get("id"))
+    ids.discard(None)
+    return ids
+
+
+def accepted(spond_event, member_ids):
+    """Has one of us answered yes?"""
+    return bool(set((spond_event.get("responses") or {}).get("acceptedIds") or []) & member_ids)
 
 
 def events(token, group_id, days_ahead=90, now=None):

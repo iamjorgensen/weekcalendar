@@ -367,6 +367,7 @@ function renderSpond() {
       <div class="toggle-row"><div style="flex:1"><div class="t">${esc(g.name)}</div>
         <div class="row" style="gap:4px;margin-top:2px">${g.tags.map((t) => chip(person(t))).join("")}
           ${g.icon ? `<span class="small muted">ikon: ${esc(g.icon)}</span>` : ""}
+          <span class="small muted">${g.only_accepted ? "bare påmeldt" : "alle"}</span>
           <button class="link" onclick="editSpond(${i})">Endre</button></div></div>
         <label class="switch"><input type="checkbox" ${g.on ? "checked" : ""} onchange="cfg.spond.groups[${i}].on=this.checked;dirty();renderSpond()"><span></span></label></div>`).join("")
       || `<div class="muted small" style="padding:8px 0">Ingen grupper hentet ennå.</div>`}`;
@@ -429,8 +430,13 @@ function editSpond(i) {
     <div class="row wrap" style="gap:6px;margin-top:4px">${cfg.people.map((p) =>
       `<label class="row tag" style="gap:6px;padding:4px 8px"><input type="checkbox" class="s-tag" value="${esc(p.name)}" style="width:auto"
         ${g.tags.includes(p.name) ? "checked" : ""}>${esc(p.name)}</label>`).join("")}</div>
-    <label class="f">Ikon (valgfritt, f.eks. soccer)</label><input id="s-icon" value="${esc(g.icon)}">`,
+    <label class="f">Ikon (valgfritt, f.eks. soccer)</label><input id="s-icon" value="${esc(g.icon)}">
+    <label class="f">Hvilke arrangementer</label>
+    <select id="s-only"><option value="">Alle arrangementer i gruppen</option>
+      <option value="1" ${g.only_accepted ? "selected" : ""}>Bare de vi har svart ja på</option></select>
+    <div class="hint small">«Bare ja»: arrangementer du eller barna har takket ja til. Svarer dere nei senere, forsvinner det fra kalenderen.</div>`,
     () => {
+      g.only_accepted = val("s-only") === "1";
       g.tags = [...document.querySelectorAll(".s-tag:checked")].map((c) => c.value);
       g.icon = val("s-icon").trim().toLowerCase();
     },

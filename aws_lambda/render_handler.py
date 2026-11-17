@@ -175,7 +175,7 @@ def render(main, mappings, data, days, errors):
 FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
-FEEDS_CODE_VERSION = "4"   # 4: Spond
+FEEDS_CODE_VERSION = "5"   # 4: Spond
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 
@@ -242,10 +242,18 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
             if not params.get("SPOND_EMAIL") or not params.get("SPOND_PASSWORD"):
                 raise spond_client.SpondError("SPOND_EMAIL/SPOND_PASSWORD mangler i Parameter Store")
             token = spond_client.login(params["SPOND_EMAIL"], params["SPOND_PASSWORD"])
+            mine = None
             for g in spond_groups:
                 fid = "spond-" + g["id"][:16]
                 try:
-                    evs = spond_client.to_feed_events(spond_client.events(token, g["id"]))
+                    raw = spond_client.events(token, g["id"])
+                    if g.get("only_accepted"):   # only events one of us has said yes to
+                        if mine is None:
+                            mine = spond_client.my_member_ids(token)
+                        if not mine:   # never wipe a group because we could not tell who "we" are
+                            raise spond_client.SpondError("fant ikke deg eller barna som medlem i gruppene")
+                        raw = [e for e in raw if spond_client.accepted(e, mine)]
+                    evs = spond_client.to_feed_events(raw)
                     result[fid] = feeds.sync_events(session, params["CALENDAR_ID"], evs, g.get("tags", []), fid,
                                                     today, days_ahead=90, icon=g.get("icon", ""))
                     result[fid].update({"name": "Spond: " + (g.get("name") or ""), "found": len(evs)})

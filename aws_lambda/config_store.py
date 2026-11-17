@@ -161,7 +161,8 @@ def validate(cfg):
         if icon and not re.fullmatch(r"[a-z0-9_-]+", icon):
             raise ConfigError(f"Ugyldig ikonnavn «{icon}»")
         sgroups.append({"id": gid, "name": _s(g.get("name"), 80) or gid, "tags": tags, "icon": icon,
-                        "on": g.get("on", True) is not False})
+                        "on": g.get("on", True) is not False,
+                        "only_accepted": bool(g.get("only_accepted"))})
     out["spond"] = {"on": bool(sp.get("on")), "groups": sgroups}
 
     model = _s((cfg.get("ai") or {}).get("model")) or DEFAULT_AI["model"]

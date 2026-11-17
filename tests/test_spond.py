@@ -53,7 +53,7 @@ def _spond_cfg():
 
 def test_config_validates_spond():
     cfg = _spond_cfg()
-    assert cfg["spond"]["groups"][0] == {"id": "G1", "name": "JR IK G16", "tags": ["Peter"], "icon": "soccer", "on": True}
+    assert cfg["spond"]["groups"][0] == {"id": "G1", "name": "JR IK G16", "tags": ["Peter"], "icon": "soccer", "on": True, "only_accepted": False}
     bad = dict(cfg, spond={"on": True, "groups": [{"id": "G1", "tags": ["Ola"]}]})
     with pytest.raises(config_store.ConfigError, match="Ola"):
         config_store.validate(bad)
@@ -143,3 +143,53 @@ def test_admin_cleanup_endpoint(aws, monkeypatch):
     assert r["statusCode"] == 200 and json.loads(r["body"]) == {"deleted": 1}
     assert calls[1] == {"action": "spond_cleanup", "delete": ["old1"]} and calls[2][0] == "render"
     assert _api("/api/spond/cleanup", method="POST", body={"ids": "x"})["statusCode"] == 400
+
+
+def test_only_accepted_filters_on_our_members(aws, monkeypatch):
+    import school.calendar_sync as cs
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "SPOND_EMAIL": "a@b.no", "SPOND_PASSWORD": "pw"})
+    group = {"id": "G1", "members": [
+        {"id": "M-PETER", "profile": {"id": "P-KID"}, "guardians": [{"id": "x", "profile": {"id": "P-ME"}}]},
+        {"id": "M-OTHER", "profile": {"id": "P-OTHER"}, "guardians": []}]}
+
+    def fake_request(method, path, token=None, **k):
+        return {"profile": {"id": "P-ME"}, "groups/": [group]}[path]
+    monkeypatch.setattr(spond_client, "_request", fake_request)
+    assert spond_client.my_member_ids("tok") == {"M-PETER"}
+
+    evs = [{"id": "E1", "heading": "Trening", "startTimestamp": "2026-11-20T16:00:00Z",
+            "responses": {"acceptedIds": ["M-PETER"]}},
+           {"id": "E2", "heading": "Cup", "startTimestamp": "2026-11-21T09:00:00Z",
+            "responses": {"acceptedIds": ["M-OTHER"], "declinedIds": ["M-PETER"]}}]
+    monkeypatch.setattr(spond_client, "login", lambda e, p: "tok")
+    monkeypatch.setattr(spond_client, "events", lambda tok, gid, **k: evs)
+    session = Session()
+    monkeypatch.setattr(cs, "session_from_service_account", lambda info: session)
+    cfg = _spond_cfg()
+    for g in cfg["spond"]["groups"]:
+        g["only_accepted"] = True
+    cfg = config_store.validate(cfg)
+    assert all(g["only_accepted"] for g in cfg["spond"]["groups"])
+    errors = []
+    res = render_handler.sync_calendar_feeds(s3, BUCKET, errors, force=True, cfg=cfg)
+    assert errors == [] and res["spond-G1"]["found"] == 1
+    assert [b["summary"] for b in session.posted] == ["Trening Peter"]
+
+
+def test_only_accepted_never_wipes_when_members_unknown(aws, monkeypatch):
+    import school.calendar_sync as cs
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "SPOND_EMAIL": "a@b.no", "SPOND_PASSWORD": "pw"})
+    monkeypatch.setattr(spond_client, "login", lambda e, p: "tok")
+    monkeypatch.setattr(spond_client, "events", lambda tok, gid, **k: [])
+    monkeypatch.setattr(spond_client, "my_member_ids", lambda tok: set())
+    ours = {"id": "ev-1", "summary": "Trening Peter", "start": {"dateTime": "2026-12-20T16:00:00+00:00"},
+            "extendedProperties": {"private": {"source": "weekcalendar-feed", "feed": "spond-G1", "uid": "spond-E1"}}}
+    session = Session(ours=[ours])
+    monkeypatch.setattr(cs, "session_from_service_account", lambda info: session)
+    cfg = _spond_cfg()
+    cfg["spond"]["groups"][0]["only_accepted"] = True
+    errors = []
+    res = render_handler.sync_calendar_feeds(s3, BUCKET, errors, force=True, cfg=cfg)
+    assert session.deleted == [] and "error" in res["spond-G1"] and errors
