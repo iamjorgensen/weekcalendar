@@ -15,6 +15,7 @@ import watchdog_handler  # noqa: E402
 from designs import dense, moments  # noqa: E402
 from designs.common import RED, YELLOW  # noqa: E402
 from test_moments import day  # noqa: E402
+from test_aws_handlers import aws  # noqa: E402,F401  (fixture)
 
 PEOPLE = [{"name": "Nora", "letter": "N", "color": "YELLOW", "birthday": "", "nameday": "11-19"},
           {"name": "Emil", "letter": "E", "color": "GREEN", "birthday": "", "nameday": "03-14"}]
@@ -148,3 +149,55 @@ def test_countdown_tags_people():
                         "people": people, "countdowns": [{"date": "2026-11-29", "title": "Syden Christian"}],
                         "days": [day(d)] + [day(date(2026, 11, 17 + i)) for i in range(1, 5)]}, {"moments": True})
     assert img.size == (800, 480)
+
+
+def _tibber_data(today):
+    from datetime import timedelta
+    nodes = []
+    for i in range(1, 400):
+        d = today - timedelta(days=i)
+        nodes.append({"from": f"{d.isoformat()}T00:00:00.000+01:00", "consumption": 40.0 if i <= 30 else 50.0})
+    return {"viewer": {"homes": [{"id": "h1", "appNickname": "Hjemme", "consumption": {"nodes": nodes}}]}}
+
+
+def test_tibber_summary_this_year_vs_last():
+    import tibber
+    today = date(2026, 11, 17)
+    s = tibber.summary(tibber.daily(_tibber_data(today)), today)
+    assert s["kwh"] == 1200 and s["kwh_last_year"] == 1500 and s["pct"] == -20
+    assert len(s["days"]) == 30 and s["days"][-1] == 40.0
+    short = {d: v for d, v in tibber.daily(_tibber_data(today)).items() if d > date(2026, 1, 1)}
+    assert tibber.summary(short, today)["pct"] is None          # no data a year back
+
+
+def test_energy_block_in_evening_and_car_in_corner():
+    import tibber
+    from designs.common import BLUE, WHITE
+    today = date(2026, 11, 17)
+    energy = tibber.summary(tibber.daily(_tibber_data(today)), today)
+    base = {"today": today, "updated": "18:05", "battery": 80, "energy": energy,
+            "car": {"pct": 64, "note": "Lader nå"},
+            "days": [day(date(2026, 11, 17 + i)) for i in range(0, 6)]}
+    opts = {"month_column": True, "upcoming": True, "evening": True}
+    eve = dense.render(dict(base, now=datetime(2026, 11, 17, 18, 5)), opts)
+    morning = dense.render(dict(base, now=datetime(2026, 11, 17, 7, 0)), opts)
+    count = lambda im: sum(1 for x in range(551, 795) for y in range(300, 476) if im.getpixel((x, y)) == BLUE)
+    assert count(eve) > 200 and count(morning) == 0          # bars only in the evening view
+    assert YELLOW in [eve.getpixel((x, 466)) for x in range(86, 104)]   # ⚡ next to the frame battery
+
+
+def test_tibber_admin_test_endpoint(aws, monkeypatch):
+    import tibber
+    from test_admin import ADMIN, _api
+    from test_aws_handlers import _put_params
+    _s3, ssm = aws
+    _put_params(ssm, {"ADMIN_TOKEN": ADMIN})
+    assert _api("/api/tibber/test", method="POST")["statusCode"] == 400
+    _put_params(ssm, {"TIBBER_TOKEN": "t"})
+    today = date.today()
+    monkeypatch.setattr(tibber, "query", lambda token, q, timeout=10: _tibber_data(today) if "consumption" in q
+                        else {"__schema": {"types": [{"name": "Home"}, {"name": "ElectricVehicle"}]}})
+    r = _api("/api/tibber/test", method="POST")
+    body = json.loads(r["body"])
+    assert r["statusCode"] == 200 and body["homes"] == ["Hjemme"] and body["vehicle_types"] == ["ElectricVehicle"]
+    assert body["summary"]["kwh"] == 1200

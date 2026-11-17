@@ -352,6 +352,10 @@ def add_extras(data, cfg, s3, bucket, today=None, preview=False):
     if preview:      # never remember "first snow" from a preview
         data["first_snow"], data["aurora_kp"] = False, None
         return
+    params, _m = aws_common.get_parameters(["TIBBER_TOKEN"])
+    if params.get("TIBBER_TOKEN"):           # household electricity (evening view) and, if available, the car
+        import tibber
+        data["energy"] = safe("tibber", lambda: tibber.energy(params["TIBBER_TOKEN"], today), None)
     data["first_snow"] = safe("first_snow", lambda: extras.first_snow(
         s3, bucket, today, w0.get("condition") or w0.get("symbol")), False)
     data["aurora_kp"] = safe("aurora", lambda: extras.aurora_kp(today), None)

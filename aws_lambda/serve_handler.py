@@ -269,7 +269,8 @@ def _serve_status():
 
 
 # ------------------------------------------------------------------ admin
-ADMIN_PARAMS = ["ADMIN_TOKEN", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CALENDAR_FEEDS", "SPOND_EMAIL", "SPOND_PASSWORD"]
+ADMIN_PARAMS = ["ADMIN_TOKEN", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CALENDAR_FEEDS", "SPOND_EMAIL", "SPOND_PASSWORD",
+                "TIBBER_TOKEN"]
 FEEDS_STATE_KEY = "cache/feeds_sync.json"
 LETTERS_LOG_KEY = "log/letters.json"
 _admin_page = {"html": None}
@@ -354,6 +355,22 @@ def _admin_api(path, method, event, headers):
             token = spond_client.login(params["SPOND_EMAIL"], params["SPOND_PASSWORD"])
             return _json(200, {"groups": spond_client.groups(token)})
         except spond_client.SpondError as e:
+            return _json(502, {"error": str(e)})
+
+    if path == "/api/tibber/test" and method == "POST":
+        import tibber
+        if not params.get("TIBBER_TOKEN"):
+            return _json(400, {"error": "Legg inn TIBBER_TOKEN i Parameter Store først"})
+        from datetime import date as _date
+        try:
+            data = tibber.query(params["TIBBER_TOKEN"], tibber.CONSUMPTION_Q)
+            per_day = tibber.daily(data)
+            homes = [h.get("appNickname") or "hjem" for h in (data.get("viewer") or {}).get("homes") or []]
+            return _json(200, {"homes": homes, "days_with_data": len(per_day),
+                               "first_day": min(per_day).isoformat() if per_day else None,
+                               "summary": tibber.summary(per_day, _date.today()),
+                               "vehicle_types": tibber.vehicle_types(params["TIBBER_TOKEN"])})
+        except tibber.TibberError as e:
             return _json(502, {"error": str(e)})
 
     if path == "/api/spond/test" and method == "POST":

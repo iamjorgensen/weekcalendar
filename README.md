@@ -92,6 +92,8 @@ Small yellow lines under the weather add:
 - countdowns to your own events: put ⏳ in an event's title in Google Calendar ("⏳ Syden") and the frame counts down to it ("64 dager til Syden");
 - "Fullmåne i natt" and "Nordlys mulig i kveld (Kp 6)" (NOAA's forecast).
 
+With a Tibber token, the **evening view** shows "Strøm og bil" under the month calendar instead of "Kommer": electricity for the last 30 days compared with the same days last year (−11 %), as a bar chart, and the car's battery when it is available; the car's % is also shown next to the frame's battery.
+
 The month column can also show **"Denne uka"**: chores that rotate weekly between the people you pick ("Oppvask: Emil · Søppel: Nora"). When the battery is below 15 %, the frame shows "Bytt batteri!".
 
 All of this can be switched off on the admin page.
@@ -214,6 +216,7 @@ All keys and secrets are stored in **AWS Systems Manager → Parameter Store** (
 | `LAT`, `LON` | recommended | Your location, used for the weather from [MET Norway / yr.no](https://api.met.no). |
 | `MOVAR_API_TOKEN`, `MOVAR_BASE`, `KOMMUNENR`, `MOVAR_GATENAVN`, `MOVAR_HUSNR` | optional | Waste pickup dates (Movar). Leave them out if your area is served by another company. |
 | `SPOND_EMAIL`, `SPOND_PASSWORD` | optional | Your Spond login, for [Spond](#7-sports-schedules-and-spond). The account must have a password; sign-in with Google or Apple alone won't work. |
+| `TIBBER_TOKEN` | optional | Personal token from developer.tibber.com: household electricity (and the car, if Tibber provides it) in the evening view. |
 | `NTFY_TOPIC` | optional | A long random topic name for push alerts (see [Alerts](#alerts)). |
 | `OPENAI_API_KEY` | optional | Lets AI suggest icons for events that no keyword rule matches. |
 

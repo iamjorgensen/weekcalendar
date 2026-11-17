@@ -46,7 +46,8 @@ def waste_label(ev):
 
 
 # ------------------------------------------------------------------ today panel
-def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0, banner=None, extra_lines=()):
+def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0, banner=None, extra_lines=(),
+           car=None):
     draw.rectangle([0, 0, HERO_W, H], fill=BLACK)
     x0, x1 = 18, HERO_W - 16
     d = day["date"]
@@ -58,7 +59,7 @@ def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0, 
         y = draw_banner(img, draw, HERO_W, banner, line, seed=d.toordinal()) + 4
     else:
         y = _today_heading(draw, day, d, red, accent, x0, x1)
-    return _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines)
+    return _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines, car)
 
 
 def _today_heading(draw, day, d, red, accent, x0, x1):
@@ -79,7 +80,7 @@ def _today_heading(draw, day, d, red, accent, x0, x1):
     return y
 
 
-def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines):
+def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines, car=None):
     w = day.get("weather") or {}
     if w:
         isz = 40
@@ -171,6 +172,10 @@ def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, ext
         draw_battery(draw, x0, H - 17 + cap_height(draw, f_up) // 2, battery, WHITE)
         if battery < LOW_BATTERY:     # "Bytt batteri!" next to the battery
             draw_text_top(draw, (x0 + 66, H - 17), "Bytt batteri!", f_bold(12), YELLOW)
+    if car and car.get("pct") is not None and not (battery is not None and battery < LOW_BATTERY):
+        cx = x0 + 70                  # the car's battery, e.g. "⚡ Bil 64 %"
+        _bolt(draw, cx, H - 19, 13, YELLOW)
+        draw_text_top(draw, (cx + 16, H - 17), f"Bil {car['pct']:.0f} %", f_bold(12), WHITE)
     return y
 
 
@@ -526,6 +531,63 @@ def _chores(img, draw, x, y, w, bottom, chores):
     return y + 6
 
 
+def _bolt(draw, x, y, s, col):
+    draw.polygon([(x + s * .55, y), (x + s * .15, y + s * .55), (x + s * .45, y + s * .55), (x + s * .3, y + s),
+                  (x + s * .85, y + s * .4), (x + s * .55, y + s * .4), (x + s * .75, y)], fill=col)
+
+
+def _energy(img, draw, x, y, w, bottom, energy, car=None):
+    """Evening view: 'Strøm og bil' - the car's battery (if known) and electricity, 30 days vs. last year."""
+    from designs.common import BLUE, GREEN
+    if not energy or bottom - y < 90:
+        return y
+    draw_text_top(draw, (x, y + 2), "Strøm og bil" if car else "Strøm", f_bold(15), BLACK)
+    draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
+    y += 30
+    if car and car.get("pct") is not None:
+        _bolt(draw, x, y - 1, 16, BLACK)
+        draw_text_top(draw, (x + 20, y), "Bilen", f_body(14), BLACK)
+        draw.rectangle([x + 70, y - 2, x + 140, y + 16], outline=BLACK, width=2)
+        draw.rectangle([x + 141, y + 4, x + 144, y + 10], fill=BLACK)
+        draw.rectangle([x + 73, y + 1, x + 73 + int(64 * car["pct"] / 100), y + 13],
+                       fill=GREEN if car["pct"] >= 30 else RED)
+        draw_text_top(draw, (x + 150, y), f"{car['pct']:.0f} %", f_bold(15), BLACK)
+        y += 22
+        if car.get("note"):
+            draw_text_top(draw, (x + 20, y), car["note"], f_tiny(13), BLACK)
+            y += 18
+        y += 6
+    f = f_body(14)
+    draw_text_top(draw, (x, y), f"Siste 30 dager: {energy['kwh']:,} kWh".replace(",", " "), f, BLACK)
+    if energy.get("pct") is not None:
+        pct = f"{energy['pct']:+d} %".replace("-", "−")
+        draw_text_top(draw, (x + w - text_w(draw, pct, f_bold(15)), y), pct, f_bold(15),
+                      GREEN if energy["pct"] <= 0 else RED)
+        y += 18
+        draw_text_top(draw, (x, y), "mot samme periode i fjor", f_tiny(12), BLACK)
+    y += 20
+    this, last = energy.get("days") or [], energy.get("last_year") or []
+    vals = [v for v in this + last if v]
+    ch = min(70, bottom - y - 18)
+    if vals and ch >= 24:
+        mx, bw = max(vals), w / max(1, len(this))
+        for i, v in enumerate(this):
+            bx = x + i * bw
+            if v:
+                draw.rectangle([bx + 1, y + ch - ch * v / mx, bx + bw - 1, y + ch], fill=BLUE)
+            ly = last[i] if i < len(last) else None
+            if ly:
+                draw.line([bx, y + ch - ch * ly / mx, bx + bw, y + ch - ch * ly / mx], fill=BLACK, width=2)
+        y += ch + 3
+        draw.rectangle([x, y + 2, x + 9, y + 11], fill=BLUE)
+        draw_text_top(draw, (x + 13, y), "i år", f_tiny(12), BLACK)
+        if any(last):
+            draw.line([x + 50, y + 6, x + 62, y + 6], fill=BLACK, width=2)
+            draw_text_top(draw, (x + 66, y), "i fjor", f_tiny(12), BLACK)
+        y += 18
+    return y + 4
+
+
 HUSK_RE = re.compile(r"\b(husk|ta med|ha med|ta på|må ha)\b", re.I)
 
 
@@ -694,7 +756,7 @@ def render(data, opts=None):
         if (H - 26) - y_full >= mh + 4:
             reserve = mh
     y_end = _today(img, draw, days[0], data.get("updated", ""), battery=data.get("battery"),
-                   reserve_bottom=reserve, banner=banner, extra_lines=extra)
+                   reserve_bottom=reserve, banner=banner, extra_lines=extra, car=data.get("car"))
     if reserve:
         _month(draw, data["today"], {d["date"] for d in days if d["events"]}, H - 26 - reserve)
 
@@ -743,6 +805,8 @@ def render(data, opts=None):
         for key in [k for k in ("husk", "upcoming", "weather5") if opts.get(k)]:
             if key == "husk":
                 by = _husk(img, draw, bx, by, col_w, H - 6, husk_days)
+            elif key == "upcoming" and evening and data.get("energy"):   # evening: electricity and car instead
+                by = _energy(img, draw, bx, by, col_w, H - 6, data["energy"], data.get("car"))
             elif key == "upcoming":
                 by = _upcoming(img, draw, bx, by, col_w, H - 6, later)
             else:

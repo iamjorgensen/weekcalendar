@@ -14,6 +14,7 @@
 !aws_lambda/spond_client.py
 !aws_lambda/met_alerts.py
 !aws_lambda/extras.py
+!aws_lambda/tibber.py
 !aws_lambda/aws_common.py
 !aws_lambda/render_handler.py
 !assets/fonts/*.ttf
