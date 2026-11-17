@@ -200,10 +200,11 @@
           <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="husk">«Husk denne uka» – påminnelser og neste tømming</label>
           <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="upcoming">«Kommer» – hendelser etter dagene i lista</label>
           <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="weather5">Været de neste 5 dagene</label>
-          <label class="f">Om kvelden, i stedet for «Kommer»</label>
-          <select id="evebox" onchange="setOpt('evening_upcoming', this.value === 'upcoming')">
-            <option value="energy">Strøm – forbruk og kostnad fra Tibber</option>
-            <option value="upcoming">Behold «Kommer»</option>
+          <label class="f">Strøm (Tibber) i stedet for «Kommer»</label>
+          <select id="evebox" onchange="setEnergyBox(this.value)">
+            <option value="energy">Om kvelden – forbruk og kostnad fra Tibber</option>
+            <option value="allday">Hele dagen, fra første bilde om morgenen</option>
+            <option value="upcoming">Aldri – behold «Kommer»</option>
           </select>
           <p class="hint" style="margin-top:6px">Strøm vises bare når TIBBER_TOKEN er satt.</p>
         </div></div>
@@ -596,7 +597,8 @@ function renderView() {
     c.checked = cfg.view.options.includes(c.dataset.below);
     c.onchange = () => setOpt(c.dataset.below, c.checked);
   });
-  $("#evebox").value = cfg.view.options.includes("evening_upcoming") ? "upcoming" : "energy";
+  $("#evebox").value = cfg.view.options.includes("evening_upcoming") ? "upcoming"
+    : cfg.view.options.includes("energy_allday") ? "allday" : "energy";
   $("#moments").checked = cfg.view.moments !== false;
   cfg.view.holidays = cfg.view.holidays || { on: true, julaften: true, nyttarsaften: true };
   $("#holidays").innerHTML = [["on", "Røde helligdager (Norge)", "Regnes ut automatisk hvert år, også påske og pinse"],
@@ -612,6 +614,14 @@ function setMonth(v) {
   cfg.view.options = cfg.view.options.filter((o) => !MONTH_OPTS.includes(o)).concat(v ? [v] : []); dirty();
   $("#below").style.display = v === "month_column" ? "" : "none";
 }
+function setEnergyBox(v) {
+  const o = new Set(cfg.view.options);
+  o.delete("evening_upcoming"); o.delete("energy_allday");
+  if (v === "upcoming") o.add("evening_upcoming");
+  if (v === "allday") o.add("energy_allday");
+  cfg.view.options = [...o]; dirty();
+}
+
 function setOpt(k, on) {
   const o = new Set(cfg.view.options); on ? o.add(k) : o.delete(k); cfg.view.options = [...o]; dirty();
 }
