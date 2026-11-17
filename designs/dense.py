@@ -9,6 +9,9 @@ Differences from hero.py:
   - Waste pickup events are not separate rows in the day list.
   - Two short consecutive events share one line (no icon, time + title + people).
 """
+import re
+from datetime import timedelta
+
 from PIL import Image, ImageDraw
 
 from designs import hero
@@ -17,7 +20,7 @@ from designs.common import (
     draw_battery,
     BLACK, RED, WHITE, YELLOW, W, H, MONTHS, WEEKDAYS, WEEKDAYS_SHORT, MONTHS_SHORT,
     cap_height, draw_text_top, ellipsize, f_body, f_bold, f_tiny, is_red_day, paste_icon,
-    person_chip, quantize, text_w, weather_icon_name,
+    person_chip, quantize, text_w, weather_icon_name, wrap,
 )
 
 HERO_W = hero.HERO_W
@@ -431,6 +434,126 @@ def _month_light(img, draw, today, days, x, y, w, big=False):
     return h
 
 
+def _upcoming(img, draw, x, y, w, bottom, days):
+    """'Kommer': one line per event on days not shown in the list. Returns y after."""
+    fh = f_bold(15)
+    if bottom - y < 44:
+        return y
+    draw_text_top(draw, (x, y + 2), "Kommer", fh, BLACK)
+    draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
+    y += 28
+    f, ft = f_body(14), f_tiny(13)
+    shown = 0
+    for day in days:
+        for ev in day["events"]:
+            if y + 20 > bottom:
+                return y
+            d = day["date"]
+            red = is_red_day(d, day["events"])
+            lab = f"{WEEKDAYS_SHORT[d.weekday()].lower()} {d.day}."
+            draw_text_top(draw, (x, y + 2), lab, ft, RED if red else BLACK)
+            chips = ev.get("people") or []
+            tx = x + 52
+            title_w = x + w - tx - len(chips) * 17
+            draw_text_top(draw, (tx, y), ellipsize(draw, ev["title"], f, title_w), f, BLACK)
+            cx = x + w - len(chips) * 17 + 1
+            for letter, col in chips:
+                person_chip(draw, cx, y + cap_height(draw, f) // 2, letter, col, 15)
+                cx += 17
+            y += 20
+            shown += 1
+    if not shown:
+        draw_text_top(draw, (x, y), "Ingenting mer de neste dagene", f_body(14), BLACK)
+        y += 20
+    return y + 6
+
+
+HUSK_RE = re.compile(r"\b(husk|ta med|ha med|ta på|må ha)\b", re.I)
+
+
+def _husk(img, draw, x, y, w, bottom, days):
+    """'Husk denne uka': reminders/things to bring until Sunday + next waste pickups. Returns y after."""
+    if bottom - y < 50:
+        return y
+    today = days[0]["date"]
+    end = today + timedelta(days=6 - today.weekday())       # this week (until Sunday)
+    items, seen = [], set()
+    for day in days:
+        if day["date"] > end:
+            break
+        for ev in day["events"]:
+            t = ev["title"]
+            if not HUSK_RE.search(t) or t in seen:
+                continue
+            seen.add(t)
+            t = re.sub(r"^husk denne uka:\s*", "", t, flags=re.I)
+            t = re.sub(r"^.*?\b(husk|ta med)\b\s*", lambda m: m.group(1).capitalize() + " ", t, count=1, flags=re.I) \
+                if not t.lower().startswith(("ta med", "husk")) else t
+            when = "" if day["date"] == today or "denne uka" in ev["title"].lower() \
+                else f"{WEEKDAYS_SHORT[day['date'].weekday()].lower()}: "
+            items.append((when + t[0].upper() + t[1:], ev.get("people") or []))
+    pickups = []
+    for day in days:
+        for ev in day["events"]:
+            if is_waste(ev):
+                lab = waste_label(ev)
+                if lab not in [p[0] for p in pickups]:
+                    pickups.append((lab, day["date"]))
+    if not items and not pickups:
+        return y
+    fh = f_bold(15)
+    draw_text_top(draw, (x, y + 2), "Husk denne uka", fh, BLACK)
+    draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
+    y += 29
+    f = f_body(14)
+    ch = cap_height(draw, f)
+    for text, people in items:
+        cw = len(people) * 17
+        lines = wrap(draw, text, f, w - 14 - cw, 2)
+        need = len(lines) * (ch + 7) + 4
+        if y + need > bottom - (22 if pickups else 0):
+            break
+        draw.ellipse([x + 1, y + ch // 2 - 2, x + 6, y + ch // 2 + 3], fill=BLACK)
+        for k, ln in enumerate(lines):
+            draw_text_top(draw, (x + 12, y + k * (ch + 7)), ln, f, BLACK)
+        cx = x + w - cw + 1
+        for letter, col in people:
+            person_chip(draw, cx, y + ch // 2, letter, col, 15)
+            cx += 17
+        y += need
+    if pickups and y + 20 <= bottom:
+        txt = "  ·  ".join(f"{lab} {WEEKDAYS_SHORT[d.weekday()].lower()} {d.day}." for lab, d in pickups[:3])
+        paste_icon(img, "trash-2", x, y - 1, 15, BLACK)
+        draw_text_top(draw, (x + 20, y + 1), ellipsize(draw, txt, f_tiny(13), w - 20), f_tiny(13), BLACK)
+        y += 22
+    return y + 6
+
+
+def _weather_strip(img, draw, x, y, w, bottom, days):
+    """Next five days: weekday, icon, max/min. Returns y after."""
+    days = [d for d in days if d.get("weather")][:5]
+    if not days or bottom - y < 78:
+        return y
+    fh = f_bold(15)
+    draw_text_top(draw, (x, y + 2), "Været", fh, BLACK)
+    draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
+    y += 28
+    cw = w / len(days)
+    for i, day in enumerate(days):
+        cx = x + i * cw + cw / 2
+        d, wt = day["date"], day["weather"]
+        lab = WEEKDAYS_SHORT[d.weekday()]
+        f = f_tiny(13)
+        draw_text_top(draw, (cx - text_w(draw, lab, f) / 2, y), lab, f, RED if d.weekday() >= 5 else BLACK)
+        paste_icon(img, weather_icon_name(wt.get("symbol")), cx - 12, y + 16, 24, BLACK)
+        t = f"{wt['tmax']:.0f}°"
+        fb = f_bold(14)
+        draw_text_top(draw, (cx - text_w(draw, t, fb) / 2, y + 45), t, fb, BLACK)
+        t2 = f"{wt['tmin']:.0f}°"
+        draw_text_top(draw, (cx - text_w(draw, t2, f) / 2, y + 63), t2, f, BLACK)
+    return y + 82
+
+
 def render(data, opts=None):
     """
     opts (all optional, default off):
@@ -466,6 +589,12 @@ def render(data, opts=None):
             days = days[1:]
             days[0] = dict(days[0], heading="I morgen")
 
+    husk_days = days
+    if opts.get("husk") and opts.get("month_column"):
+        # week reminders live in the "Husk denne uka" box, not in the day panels
+        days = [dict(d, events=[e for e in d["events"] if not e["title"].lower().startswith("husk denne uka")])
+                for d in days]
+
     if opts.get("collapse"):
         days = collapse_repeats(days)
 
@@ -498,15 +627,18 @@ def render(data, opts=None):
     col_w = (W - left - gap - 8) // 2
     cols = [left, left + col_w + gap]
     bottoms = [H - 6, H - 6]
+    below = None
     if opts.get("month_column"):
         # the whole right column is a large month calendar; the day list uses the left column
-        _month_light(img, draw, data["today"], days, cols[1], 8, col_w, big=True)
+        mh = _month_light(img, draw, data["today"], days, cols[1], 8, col_w, big=True)
+        below = (cols[1], 8 + mh + 10)
         cols, bottoms = cols[:1], bottoms[:1]
     elif opts.get("month_right"):
         _w, _r, mh = _light_month_metrics(data["today"], False)
         _month_light(img, draw, data["today"], days, cols[1], H - mh - 4, col_w)
         bottoms[1] = H - mh - 12
     col_i, y = 0, 8
+    last_shown = None
     for day in list_days:
         h = _day_section(img, draw, 0, 0, col_w, day, measure=True)
         if y + h > bottoms[col_i]:
@@ -515,5 +647,18 @@ def render(data, opts=None):
             if col_i >= len(cols):
                 break
         _day_section(img, draw, cols[col_i], y, col_w, day, morning=bool(opts.get("morning")))
+        last_shown = day["date"]
         y += h
+
+    # Space under the large month: "Kommer" (events after the listed days) and/or weather
+    if below is not None:
+        bx, by = below
+        later = [d for d in days if last_shown is None or d["date"] > last_shown]
+        for key in [k for k in ("husk", "upcoming", "weather5") if opts.get(k)]:
+            if key == "husk":
+                by = _husk(img, draw, bx, by, col_w, H - 6, husk_days)
+            elif key == "upcoming":
+                by = _upcoming(img, draw, bx, by, col_w, H - 6, later)
+            else:
+                by = _weather_strip(img, draw, bx, by, col_w, H - 6, days[1:])
     return quantize(img)

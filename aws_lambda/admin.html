@@ -162,7 +162,13 @@
           <option value="month">I det svarte feltet (når det er plass)</option>
           <option value="month_right">Liten, nede til høyre</option>
           <option value="month_column">Stor, i høyre kolonne (ukenummer og prikker per person)</option>
-        </select></div>
+        </select>
+        <div id="below" style="display:none;margin-top:8px">
+          <label class="f">Under den store månedskalenderen (i denne rekkefølgen, så langt det er plass)</label>
+          <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="husk">«Husk denne uka» – påminnelser og neste tømming</label>
+          <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="upcoming">«Kommer» – hendelser etter dagene i lista</label>
+          <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="weather5">Været de neste 5 dagene</label>
+        </div></div>
       <div class="card"><div class="grid2">
         <div><label class="f">Kveldsmodus fra kl.</label><select id="evh" onchange="cfg.view.evening_hour=+this.value;dirty()"></select></div>
         <div><label class="f">Antall dager hentet</label><select id="days" onchange="cfg.view.days=+this.value;dirty()"></select></div>
@@ -335,12 +341,18 @@ function renderView() {
       <label class="switch"><input type="checkbox" ${cfg.view.options.includes(k) ? "checked" : ""}
         onchange="setOpt('${k}', this.checked)"><span></span></label></div>`).join("");
   $("#monthpos").value = MONTH_OPTS.find((o) => cfg.view.options.includes(o)) || "";
+  $("#below").style.display = cfg.view.options.includes("month_column") ? "" : "none";
+  document.querySelectorAll("[data-below]").forEach((c) => {
+    c.checked = cfg.view.options.includes(c.dataset.below);
+    c.onchange = () => setOpt(c.dataset.below, c.checked);
+  });
   $("#evh").innerHTML = [15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${h === cfg.view.evening_hour ? "selected" : ""}>${h}:00</option>`).join("");
   $("#days").innerHTML = [7, 10, 14, 21].map((d) => `<option ${d === cfg.view.days ? "selected" : ""}>${d}</option>`).join("");
 }
 const MONTH_OPTS = ["month", "month_right", "month_column"];
 function setMonth(v) {
   cfg.view.options = cfg.view.options.filter((o) => !MONTH_OPTS.includes(o)).concat(v ? [v] : []); dirty();
+  $("#below").style.display = v === "month_column" ? "" : "none";
 }
 function setOpt(k, on) {
   const o = new Set(cfg.view.options); on ? o.add(k) : o.delete(k); cfg.view.options = [...o]; dirty();

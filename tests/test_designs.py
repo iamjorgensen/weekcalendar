@@ -197,3 +197,17 @@ def test_month_on_white_side(opt):
     dd = to_design_data(_data(), days=14, now=NOW)
     img = dense.render(dd, {opt: True, "month": True, "collapse": True})
     assert img.size == (800, 480) and len(img.getcolors(1 << 24)) <= 6
+
+
+def test_month_column_with_husk_upcoming_weather():
+    from designs import dense
+    data = _data()
+    d0 = NOW.date().isoformat()
+    data["events"] += [dict(date=d0, time="", name="Husk denne uka: skiftetøy og innesko", display_text="Husk denne uka: skiftetøy og innesko",
+                            tags=[{"text": "Amalie", "color_rgb": (255, 255, 0)}])]
+    dd = to_design_data(data, days=14, now=NOW)
+    for opts in ({"husk": True}, {"upcoming": True}, {"weather5": True}, {"husk": True, "upcoming": True, "weather5": True}):
+        img = dense.render(dd, dict(opts, month_column=True, collapse=True))
+        assert img.size == (800, 480) and len(img.getcolors(1 << 24)) <= 6
+    assert dense.HUSK_RE.search("Turdag – husk vedkubbe") and dense.HUSK_RE.search("Ta med gamle klær")
+    assert not dense.HUSK_RE.search("Huskestue")
