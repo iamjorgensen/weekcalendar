@@ -175,7 +175,7 @@ def render(main, mappings, data, days, errors):
 FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
-FEEDS_CODE_VERSION = "2"
+FEEDS_CODE_VERSION = "3"   # 3: feed icon stored on the events
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 
@@ -217,12 +217,12 @@ def sync_calendar_feeds(s3, bucket, errors, force=False):
     except Exception as e:
         errors.append(f"feeds: {e}")
         return None
-    for url, names in feeds.parse_feeds(spec):
+    for url, names, icon in feeds.parse_feeds(spec):
         fid = feeds.feed_id(url)
         try:
             r = requests.get(url, timeout=15, headers={"User-Agent": "weekcalendar/1.0"})
             r.raise_for_status()
-            result[fid] = feeds.sync_feed(session, params["CALENDAR_ID"], r.text, names, fid, today)
+            result[fid] = feeds.sync_feed(session, params["CALENDAR_ID"], r.text, names, fid, today, icon=icon)
         except Exception as e:
             logger.exception("Feed sync failed for %s", fid)
             errors.append(f"feed {fid}: {e}")

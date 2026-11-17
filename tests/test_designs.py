@@ -183,3 +183,9 @@ def test_evening_mode_keeps_tonight(monkeypatch):
     dense.render(dd, {"evening": True})
     first = sections[0]
     assert first.get("label") == "I kveld" and [e["title"] for e in first["events"]] == ["Danmark – Norge"]
+
+
+def test_private_icon_from_calendar_event():
+    import data_provider
+    assert data_provider._private_icon({"extendedProperties": {"private": {"icon": "soccer"}}}) == "soccer"
+    assert data_provider._private_icon({}) is None

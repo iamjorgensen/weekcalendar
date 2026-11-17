@@ -43,8 +43,10 @@ END:VCALENDAR\r
 
 def test_parse_feeds_config():
     spec = "webcal://ics.example.com/norway.ics | Christian\n# comment\nhttps://x/y.ics\n"
-    assert feeds.parse_feeds(spec) == [("https://ics.example.com/norway.ics", ["Christian"]),
-                                       ("https://x/y.ics", [])]
+    assert feeds.parse_feeds(spec) == [("https://ics.example.com/norway.ics", ["Christian"], ""),
+                                       ("https://x/y.ics", [], "")]
+    fm = feeds.parse_feeds("https://pub.fotmob.com/x/8492.ics | Christian\nhttps://a/b.ics | Peter | tree")
+    assert fm == [("https://pub.fotmob.com/x/8492.ics", ["Christian"], "soccer"), ("https://a/b.ics", ["Peter"], "tree")]
 
 
 def test_parse_ics_formats():
@@ -177,3 +179,15 @@ def test_resync_corrects_title_written_by_old_version():
     stats = feeds.sync_feed(s, "cal", FOTMOB, ["Christian"], "f", TODAY)
     assert stats["updated"] == 1 and stats["created"] == 0
     assert s.patched[0][1]["summary"] == "Danmark – Norge Christian"
+
+
+def test_feed_icon_stored_and_old_events_patched():
+    s = Session()
+    feeds.sync_feed(s, "cal", FOTMOB, ["Christian"], "f", TODAY, icon="soccer")
+    assert s.posted[0]["extendedProperties"]["private"]["icon"] == "soccer"
+    ours = [dict(s.posted[0], id="ev-1")]
+    ours[0]["extendedProperties"] = {"private": {k: v for k, v in s.posted[0]["extendedProperties"]["private"].items()
+                                                 if k != "icon"}}
+    s2 = Session(ours=ours)
+    stats = feeds.sync_feed(s2, "cal", FOTMOB, ["Christian"], "f", TODAY, icon="soccer")
+    assert stats["updated"] == 1 and s2.patched[0][1]["extendedProperties"]["private"]["icon"] == "soccer"

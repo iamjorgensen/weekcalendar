@@ -30,18 +30,23 @@ DEFAULT_DURATION = timedelta(hours=2)
 
 # ------------------------------------------------------------------ config
 def parse_feeds(spec):
-    """'url | Christian\\nurl2' -> [(url, ['Christian']), (url2, [])]"""
+    """
+    One feed per line: '<url> | <names> | <icon>' (names and icon optional).
+    Returns [(url, ['Christian'], 'soccer'), ...]. FotMob feeds default to the 'soccer' icon.
+    """
     feeds = []
     for line in (spec or "").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        url, _, names = line.partition("|")
-        url = url.strip()
+        parts = [p.strip() for p in line.split("|")]
+        url = parts[0]
+        names = parts[1].split() if len(parts) > 1 else []
+        icon = parts[2] if len(parts) > 2 and parts[2] else ("soccer" if "fotmob.com" in url else "")
         if url.lower().startswith("webcal://"):
             url = "https://" + url[len("webcal://"):]
         if url:
-            feeds.append((url, names.split()))
+            feeds.append((url, names, icon))
     return feeds
 
 
@@ -169,11 +174,12 @@ def _norm(s):
     return re.sub(r"[^a-z0-9æøå]+", "", (s or "").lower())
 
 
-def _event_body(ev, names, fid):
+def _event_body(ev, names, fid, icon=""):
     body = {
         "summary": title_with_names(clean_title(ev["summary"]), names),
         "description": "\n".join(x for x in (ev.get("description"), "Fra kalenderabonnement") if x),
-        "extendedProperties": {"private": {"source": SOURCE, "feed": fid, "uid": ev["uid"][:900]}},
+        "extendedProperties": {"private": {"source": SOURCE, "feed": fid, "uid": ev["uid"][:900],
+                                           **({"icon": icon} if icon else {})}},
         "transparency": "transparent",
     }
     if ev.get("location"):
@@ -207,7 +213,7 @@ def _ours(session, calendar_id, fid, since):
     return _check(session.get(_url(calendar_id), params=params), "lesing").json().get("items", [])
 
 
-def sync_feed(session, calendar_id, ics_text, names, fid, today, days_ahead=365):
+def sync_feed(session, calendar_id, ics_text, names, fid, today, days_ahead=365, icon=""):
     """Returns dict with created/updated/deleted/skipped counts."""
     window_end = today + timedelta(days=days_ahead)
     wanted = []
@@ -229,13 +235,15 @@ def sync_feed(session, calendar_id, ics_text, names, fid, today, days_ahead=365)
     for ev in wanted:
         uid = ev["uid"][:900]
         seen.add(uid)
-        body = _event_body(ev, names, fid)
+        body = _event_body(ev, names, fid, icon)
         old = existing.get(uid)
         if old:
+            old_icon = ((old.get("extendedProperties") or {}).get("private") or {}).get("icon", "")
             if (old.get("summary") != body["summary"] or not _same_time(old.get("start", {}), body["start"])
-                    or not _same_time(old.get("end", {}), body["end"])):
+                    or not _same_time(old.get("end", {}), body["end"]) or old_icon != (icon or "")):
                 _check(session.patch(_url(calendar_id, "/" + old["id"]),
-                                     json={k: body[k] for k in ("summary", "start", "end", "description")}),
+                                     json={k: body[k] for k in ("summary", "start", "end", "description",
+                                                                "extendedProperties")}),
                        "oppdatering")
                 stats["updated"] += 1
             continue

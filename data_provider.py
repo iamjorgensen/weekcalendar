@@ -463,6 +463,14 @@ def _ensure_aware(dt):
     return dt.astimezone(timezone.utc)
 
 
+def _private_icon(item):
+    """Icon stored on the event by our own sync (e.g. calendar feeds): extendedProperties.private.icon."""
+    try:
+        return ((item.get("extendedProperties") or {}).get("private") or {}).get("icon") or None
+    except Exception:
+        return None
+
+
 def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
     session = session or requests.Session()
     today_local = now_local().date()
@@ -482,7 +490,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
     timeMax = iso_z(end_utc)
     url = (
         f"https://www.googleapis.com/calendar/v3/calendars/{CALENDAR_ID}/events"
-        f"?timeMin={timeMin}&timeMax={timeMax}&singleEvents=true&fields=items(summary,start,end)&orderBy=startTime&key={API_KEY_GOOGLE}"
+        f"?timeMin={timeMin}&timeMax={timeMax}&singleEvents=true&fields=items(summary,start,end,extendedProperties)&orderBy=startTime&key={API_KEY_GOOGLE}"
     )
 
     events = []
@@ -532,7 +540,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                             "tag_color_name": mapped.get("tag_color_name"),
                             "tag_color_rgb": mapped.get("tag_color_rgb"),
                             "time": "",
-                            "icon": mapped.get("icon"),
+                            "icon": mapped.get("icon") or _private_icon(it),
                             "icon_size": mapped.get("icon_size"),
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -558,7 +566,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                                 "tag_color_name": mapped.get("tag_color_name"),
                                 "tag_color_rgb": mapped.get("tag_color_rgb"),
                                 "time": "",
-                                "icon": mapped.get("icon"),
+                                "icon": mapped.get("icon") or _private_icon(it),
                                 "icon_size": mapped.get("icon_size"),
                                 "icon_color_name": mapped.get("icon_color_name"),
                                 "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -593,7 +601,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                                 "tag_color_name": mapped.get("tag_color_name"),
                                 "tag_color_rgb": mapped.get("tag_color_rgb"),
                                 "time": time_str,
-                                "icon": mapped.get("icon"),
+                                "icon": mapped.get("icon") or _private_icon(it),
                                 "icon_size": mapped.get("icon_size"),
                                 "icon_color_name": mapped.get("icon_color_name"),
                                 "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -634,7 +642,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                             "tag_color_name": mapped.get("tag_color_name"),
                             "tag_color_rgb": mapped.get("tag_color_rgb"),
                             "time": time_str,
-                            "icon": mapped.get("icon"),
+                            "icon": mapped.get("icon") or _private_icon(it),
                             "icon_size": mapped.get("icon_size"),
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
