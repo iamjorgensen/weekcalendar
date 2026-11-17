@@ -283,3 +283,52 @@ def sync_events(session, calendar_id, events, names, fid, today, days_ahead=365,
                 _check(resp, "sletting")
             stats["deleted"] += 1
     return stats
+
+
+# ------------------------------------------------------------------ clean-up
+def _mentions(ev, marker):
+    org = ev.get("organizer") or {}
+    creator = ev.get("creator") or {}
+    hay = " ".join(str(x) for x in (ev.get("description"), ev.get("location"), ev.get("iCalUID"),
+                                    org.get("email"), org.get("displayName"), creator.get("email"),
+                                    (ev.get("source") or {}).get("url"))).lower()
+    return marker in hay
+
+
+def find_foreign(session, calendar_id, start, end, marker="spond"):
+    """
+    Events in the family calendar that some other tool put there (e.g. Spond's own
+    calendar sync) and that mention `marker`. Events this tool wrote are never included.
+    Returns [{id, summary, start}] sorted by start.
+    """
+    params = {"timeMin": f"{start.isoformat()}T00:00:00Z", "timeMax": f"{end.isoformat()}T23:59:59Z",
+              "singleEvents": "false", "maxResults": 2500, "showDeleted": "false"}
+    found, token = [], None
+    while True:
+        if token:
+            params["pageToken"] = token
+        data = _check(session.get(_url(calendar_id), params=params), "lesing").json()
+        for ev in data.get("items", []):
+            priv = (ev.get("extendedProperties") or {}).get("private", {})
+            if priv.get("source", "").startswith("weekcalendar"):
+                continue
+            if _mentions(ev, marker.lower()):
+                st = ev.get("start") or {}
+                found.append({"id": ev["id"], "summary": ev.get("summary", ""),
+                              "start": st.get("dateTime") or st.get("date") or ""})
+        token = data.get("nextPageToken")
+        if not token:
+            return sorted(found, key=lambda e: e["start"])
+
+
+def delete_ids(session, calendar_id, ids, allowed):
+    """Delete the chosen events, but only ids that find_foreign returned (`allowed`)."""
+    n = 0
+    for i in ids:
+        if i not in allowed:
+            continue
+        resp = session.delete(_url(calendar_id, "/" + i))
+        if resp.status_code not in (200, 204, 404, 410):
+            _check(resp, "sletting")
+        n += 1
+    return n

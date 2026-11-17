@@ -157,6 +157,10 @@
         Krever SPOND_EMAIL og SPOND_PASSWORD i Parameter Store.</p>
       <div class="card" id="spond"></div>
       <button class="btn" onclick="loadSpondGroups()">Hent grupper fra Spond</button>
+      <h2>Rydd opp gamle Spond-hendelser</h2>
+      <p class="hint">Finner hendelser som Spond sin egen kalendersynk har lagt i familiekalenderen (et år bakover og fremover). Ingenting slettes før du trykker «Slett valgte».</p>
+      <div class="card" id="spond-clean" style="display:none"></div>
+      <button class="btn" onclick="findSpondOld()">Finn gamle Spond-hendelser</button>
     </section>
 
     <section id="visning">
@@ -375,6 +379,43 @@ async function loadSpondGroups() {
   }
   if (added) dirty();
   renderSpond(); toast(added ? `${added} nye grupper – slå på de du vil ha` : "Ingen nye grupper");
+}
+
+let spondOld = [];
+async function findSpondOld() {
+  toast("Leter i kalenderen …");
+  const r = await api("/api/spond/cleanup"); const j = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(j.error || "Kunne ikke lese kalenderen");
+  spondOld = j.events || [];
+  renderSpondOld();
+  toast(spondOld.length ? `Fant ${spondOld.length} hendelser` : "Fant ingen gamle Spond-hendelser");
+}
+function fmtStart(s) {
+  const d = new Date(s.length === 10 ? s + "T12:00:00" : s);
+  const day = d.toLocaleDateString("nb-NO", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  return s.length === 10 ? day : day + " " + d.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
+}
+function renderSpondOld() {
+  const box = $("#spond-clean");
+  box.style.display = "";
+  box.innerHTML = spondOld.length ? `
+    <label class="row small" style="gap:6px;padding:4px 0"><input type="checkbox" checked style="width:auto"
+      onchange="document.querySelectorAll('.so').forEach((c) => c.checked = this.checked)"><b>Velg alle (${spondOld.length})</b></label>
+    ${spondOld.map((e, i) => `<label class="row small" style="gap:6px;padding:4px 0"><input type="checkbox" class="so" value="${i}" checked style="width:auto">
+      <span><span class="muted">${esc(fmtStart(e.start))}</span> · ${esc(e.summary || "(uten tittel)")}</span></label>`).join("")}
+    <button class="btn" style="background:#c62828;margin-top:8px" onclick="deleteSpondOld()">Slett valgte</button>`
+    : `<div class="muted small" style="padding:8px 0">Ingen gamle Spond-hendelser i familiekalenderen.</div>`;
+}
+async function deleteSpondOld() {
+  const ids = [...document.querySelectorAll(".so:checked")].map((c) => spondOld[+c.value].id);
+  if (!ids.length) return toast("Ingen valgt");
+  if (!confirm(`Slette ${ids.length} hendelser fra familiekalenderen?`)) return;
+  toast("Sletter …");
+  const r = await api("/api/spond/cleanup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(j.error || "Sletting feilet");
+  toast(`Slettet ${j.deleted} – lager nytt bilde`);
+  await findSpondOld();
 }
 
 function editSpond(i) {

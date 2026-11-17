@@ -121,6 +121,25 @@ def _invoke_render(invocation_type, timeout_s=None, extra=None):
     return True, "ok"
 
 
+def _call_render(payload):
+    """Invoke the render function for a small JSON task and return its JSON result."""
+    try:
+        resp = _lambda_client(60).invoke(FunctionName=os.environ["RENDER_FUNCTION_NAME"],
+                                         InvocationType="RequestResponse",
+                                         Payload=json.dumps(payload).encode("utf-8"))
+        raw = resp["Payload"].read().decode("utf-8", "replace") if resp.get("Payload") else "{}"
+        if resp.get("FunctionError"):
+            logger.error("Render task error: %s", raw[:2000])
+            try:
+                return {"error": json.loads(raw).get("errorMessage", "feil")}
+            except ValueError:
+                return {"error": raw[:300]}
+        return json.loads(raw or "{}")
+    except (ClientError, BotoCoreError, ValueError) as e:
+        logger.error("Render task failed: %s", e)
+        return {"error": str(e)}
+
+
 def _sync_render_budget(context):
     """Seconds we may wait for a synchronous render, leaving time to return the image."""
     configured = float(os.environ.get("FRESH_RENDER_TIMEOUT", "55"))
@@ -328,6 +347,27 @@ def _admin_api(path, method, event, headers):
             return _json(200, {"groups": spond_client.groups(token)})
         except spond_client.SpondError as e:
             return _json(502, {"error": str(e)})
+
+    if path == "/api/spond/cleanup" and method in ("GET", "POST"):
+        # Old events from Spond's own calendar sync: GET lists them, POST {"ids": [...]} deletes those.
+        payload = {"action": "spond_cleanup"}
+        if method == "POST":
+            try:
+                body = event.get("body") or ""
+                if event.get("isBase64Encoded"):
+                    body = base64.b64decode(body).decode("utf-8")
+                ids = json.loads(body or "{}").get("ids") or []
+            except (ValueError, AttributeError):
+                return _json(400, {"error": "ugyldig JSON"})
+            if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+                return _json(400, {"error": "ids må være en liste"})
+            payload["delete"] = ids
+        result = _call_render(payload)
+        if "error" in result:
+            return _json(502, result)
+        if method == "POST" and result.get("deleted"):
+            _invoke_render("Event", extra={"force_feeds": True})   # our Spond sync fills the gaps
+        return _json(200, result)
 
     if path == "/api/render" and method == "POST":
         ok, _detail = _invoke_render("Event", extra={"force_feeds": True})

@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -259,9 +259,33 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
     return result
 
 
+def spond_cleanup(event):
+    """
+    Old events from Spond's own calendar sync in the family calendar.
+    {"action": "spond_cleanup"} lists them; add "delete": [ids] to delete those
+    (only ids the listing would return). Range: a year back to a year ahead.
+    """
+    from school import feeds
+    from school.calendar_sync import session_from_service_account
+    params, _missing = aws_common.get_parameters(["GOOGLE_SA_JSON", "CALENDAR_ID"])
+    if not params.get("GOOGLE_SA_JSON") or not params.get("CALENDAR_ID"):
+        return {"error": "GOOGLE_SA_JSON/CALENDAR_ID mangler"}
+    session = session_from_service_account(json.loads(params["GOOGLE_SA_JSON"]))
+    today = datetime.now(timezone.utc).date()
+    found = feeds.find_foreign(session, params["CALENDAR_ID"], today - timedelta(days=365),
+                               today + timedelta(days=365))
+    ids = event.get("delete")
+    if ids:
+        n = feeds.delete_ids(session, params["CALENDAR_ID"], ids, {e["id"] for e in found})
+        return {"deleted": n}
+    return {"events": found}
+
+
 def handler(event, context):
     t0 = time.time()
     event = event or {}
+    if event.get("action") == "spond_cleanup":
+        return spond_cleanup(event)
     bucket = os.environ["BUCKET_NAME"]
     days = int(os.environ.get("RENDER_DAYS", "7"))
     errors = []

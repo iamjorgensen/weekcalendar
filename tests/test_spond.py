@@ -96,3 +96,50 @@ def test_admin_spond_groups(aws, monkeypatch):
     monkeypatch.setattr(spond_client, "groups", lambda tok: [{"id": "G1", "name": "JR IK G16", "subGroups": []}])
     r = _api("/api/spond/groups")
     assert r["statusCode"] == 200 and json.loads(r["body"])["groups"][0]["name"] == "JR IK G16"
+
+
+SPOND_OLD = {"id": "old1", "summary": "Trening G16", "start": {"dateTime": "2026-11-20T17:00:00+01:00"},
+             "description": "https://spond.com/client/sponds/ABC", "iCalUID": "abc@spond.com"}
+FAMILY = {"id": "fam1", "summary": "Tannlege", "start": {"dateTime": "2026-11-20T09:00:00+01:00"}}
+OURS = {"id": "our1", "summary": "Trening G16 Peter", "start": {"dateTime": "2026-11-20T17:00:00+01:00"},
+        "description": "spond", "extendedProperties": {"private": {"source": "weekcalendar-feed", "uid": "spond-E1"}}}
+
+
+def test_find_and_delete_old_spond_events():
+    from school import feeds
+    s = Session(manual=[SPOND_OLD, FAMILY, OURS])
+    found = feeds.find_foreign(s, "cal", date(2026, 1, 1), date(2027, 1, 1))
+    assert [e["id"] for e in found] == ["old1"]                    # not the family's own, not ours
+    n = feeds.delete_ids(s, "cal", ["old1", "fam1", "our1"], {e["id"] for e in found})
+    assert n == 1 and s.deleted == ["old1"]                        # never deletes anything not listed
+
+
+def test_render_cleanup_action(aws, monkeypatch):
+    import school.calendar_sync as cs
+    _s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group"})
+    s = Session(manual=[SPOND_OLD, FAMILY])
+    monkeypatch.setattr(cs, "session_from_service_account", lambda info: s)
+    res = render_handler.handler({"action": "spond_cleanup"}, None)
+    assert [e["summary"] for e in res["events"]] == ["Trening G16"] and s.deleted == []
+    res = render_handler.handler({"action": "spond_cleanup", "delete": ["old1", "fam1"]}, None)
+    assert res == {"deleted": 1} and s.deleted == ["old1"]
+
+
+def test_admin_cleanup_endpoint(aws, monkeypatch):
+    _s3, ssm = aws
+    _put_params(ssm, {"ADMIN_TOKEN": ADMIN})
+    calls = []
+
+    def fake_call(payload):
+        calls.append(payload)
+        return {"deleted": len(payload["delete"])} if "delete" in payload else {"events": [{"id": "old1"}]}
+    monkeypatch.setattr(serve_handler, "_call_render", fake_call)
+    monkeypatch.setattr(serve_handler, "_invoke_render", lambda *a, **k: calls.append(("render", k)) or (True, "ok"))
+    assert _api("/api/spond/cleanup", key="wrong")["statusCode"] == 401
+    r = _api("/api/spond/cleanup")
+    assert r["statusCode"] == 200 and json.loads(r["body"])["events"][0]["id"] == "old1"
+    r = _api("/api/spond/cleanup", method="POST", body={"ids": ["old1"]})
+    assert r["statusCode"] == 200 and json.loads(r["body"]) == {"deleted": 1}
+    assert calls[1] == {"action": "spond_cleanup", "delete": ["old1"]} and calls[2][0] == "render"
+    assert _api("/api/spond/cleanup", method="POST", body={"ids": "x"})["statusCode"] == 400
