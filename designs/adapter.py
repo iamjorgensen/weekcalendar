@@ -180,8 +180,12 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
         title = _clean_title(ev)
         if not title:
             continue
+        time = (ev.get("time") or "").strip()
+        # "13:40 Slutt 13:40": don't repeat a time the title already contains
+        shown_time = "" if time and time in title else time
         by_date.setdefault(d, []).append({
-            "time": (ev.get("time") or "").strip(),
+            "time": shown_time,
+            "sort_time": time,
             "title": title,
             "icon": ev.get("icon") or None,
             "people": people_from_tags(ev.get("tags")),
@@ -198,7 +202,7 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
     out_days = []
     for i in range(max(1, int(days))):
         d = today + timedelta(days=i)
-        events = sorted(by_date.get(d, []), key=lambda e: (e["time"] != "", e["time"]))
+        events = sorted(by_date.get(d, []), key=lambda e: (e["sort_time"] != "", e["sort_time"]))
         out_days.append({"date": d, "events": events, "weather": _weather_for(weather_by_date.get(d))})
 
     w0 = out_days[0]["weather"]

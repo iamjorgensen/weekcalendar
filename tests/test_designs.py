@@ -91,3 +91,12 @@ def test_titles_are_tidied_after_tag_mapping():
     assert _clean_title({"display_text": "Turdag –"}) == "Turdag"
     assert _clean_title({"display_text": "Fridag: 1. juledag"}) == "1. juledag"
     assert _clean_title({"display_text": "Kl. 18:00"}) == "Kl. 18:00"
+
+
+def test_time_not_repeated_when_in_title():
+    d = NOW.date().isoformat()
+    data = {"events": [dict(date=d, time="13:40", name="Slutt 13:40", display_text="Slutt 13:40"),
+                       dict(date=d, time="09:00", name="Gym", display_text="Gym"),
+                       dict(date=d, time="", name="Juleboden", display_text="Juleboden")]}
+    evs = to_design_data(data, days=1, now=NOW)["days"][0]["events"]
+    assert [(e["time"], e["title"]) for e in evs] == [("", "Juleboden"), ("09:00", "Gym"), ("", "Slutt 13:40")]

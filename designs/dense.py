@@ -43,7 +43,7 @@ def waste_label(ev):
 
 
 # ------------------------------------------------------------------ today panel
-def _today(img, draw, day, updated, accent=RED, battery=None):
+def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
     draw.rectangle([0, 0, HERO_W, H], fill=BLACK)
     x0, x1 = 18, HERO_W - 16
     d = day["date"]
@@ -108,7 +108,7 @@ def _today(img, draw, day, updated, accent=RED, battery=None):
     draw.rectangle([x0, y, x1, y + 1], fill=WHITE)
     y += 7
 
-    bottom = H - 26
+    bottom = H - 26 - reserve_bottom
     shown = 0
     for ev in day["events"]:
         kw = dict(size=16, icon_size=18, chip_d=18, max_lines=2, pad=3)
@@ -121,14 +121,18 @@ def _today(img, draw, day, updated, accent=RED, battery=None):
     rest = len(day["events"]) - shown
     if rest:
         draw_text_top(draw, (x0, y + 2), f"+ {rest} til", f_tiny(14), YELLOW)
+    if rest:
+        y += 20
     if not day["events"]:
         draw_text_top(draw, (x0, y + 4), "Ingen avtaler i dag", f_body(16), WHITE)
+        y += 28
 
     f_up = f_tiny(12)
     up = f"Oppdatert {updated}"
     draw_text_top(draw, (x1 - text_w(draw, up, f_up), H - 17), up, f_up, WHITE)
     if battery is not None:
         draw_battery(draw, x0, H - 17 + cap_height(draw, f_up) // 2, battery, WHITE)
+    return y
 
 
 # ------------------------------------------------------------------ day list
@@ -177,7 +181,7 @@ def _layout_rows(draw, events, w):
     return rows
 
 
-def _day_section(img, draw, x, y, w, day, measure=False):
+def _day_section(img, draw, x, y, w, day, measure=False, morning=False):
     d = day["date"]
     red = is_red_day(d, day["events"])
     col = RED if red else BLACK
@@ -209,6 +213,8 @@ def _day_section(img, draw, x, y, w, day, measure=False):
     if wthr:
         f_t = f_body(14)
         txt = f"{wthr['tmax']:.0f}°"
+        if morning and wthr.get("morning") is not None:
+            txt = f"kl 8: {wthr['morning']:.0f}°"
         if (wthr.get("precip") or 0) >= 1:
             txt = f"{wthr['precip']:.0f} mm  " + txt
         tw = text_w(draw, txt, f_t)
@@ -230,24 +236,151 @@ def _day_section(img, draw, x, y, w, day, measure=False):
     return total
 
 
-def render(data):
+# ------------------------------------------------------------------ options
+def collapse_repeats(days, min_run=3):
+    """
+    All-day events with the same title on >= min_run consecutive days are shown once,
+    on the first day, as 'Juleboden (til man 23.)'. Timed occurrences stay as they are.
+    """
+    titles = {}
+    for i, day in enumerate(days):
+        for ev in day["events"]:
+            if not ev.get("time") and not is_waste(ev):
+                titles.setdefault(ev["title"], []).append(i)
+    remove = {}   # day index -> titles to drop
+    label = {}    # (day index, title) -> new title
+    for title, idxs in titles.items():
+        run = [idxs[0]]
+        for i in idxs[1:] + [None]:
+            if i is not None and i == run[-1] + 1:
+                run.append(i)
+                continue
+            if len(run) >= min_run:
+                end = days[run[-1]]["date"]
+                label[(run[0], title)] = f"{title} (til {WEEKDAYS_SHORT[end.weekday()].lower()} {end.day}.)"
+                for j in run[1:]:
+                    remove.setdefault(j, set()).add(title)
+            if i is not None:
+                run = [i]
+    out = []
+    for i, day in enumerate(days):
+        evs = []
+        for ev in day["events"]:
+            if not ev.get("time") and ev["title"] in remove.get(i, ()):
+                continue
+            if not ev.get("time") and (i, ev["title"]) in label:
+                ev = dict(ev, title=label[(i, ev["title"])])
+            evs.append(ev)
+        out.append(dict(day, events=evs))
+    return out
+
+
+def _tomorrow(img, draw, day, y, bottom):
+    """'I morgen' block in the black panel. Returns True if drawn."""
+    x0, x1 = 18, HERO_W - 16
+    if not day["events"] or bottom - y < 56:
+        return False
+    y += 4
+    draw.rectangle([x0, y, x1, y], fill=WHITE)
+    y += 8
+    fh = f_bold(15)
+    d = day["date"]
+    draw_text_top(draw, (x0, y), f"I morgen · {WEEKDAYS_SHORT[d.weekday()]} {d.day}.", fh, YELLOW)
+    y += cap_height(draw, fh) + 8
+    kw = dict(size=15, icon_size=16, chip_d=16, max_lines=1, pad=3)
+    shown = 0
+    for ev in day["events"]:
+        h = event_row(img, draw, x0, y, x1 - x0, ev, draw_it=False, **kw)
+        if y + h > bottom - (18 if shown < len(day["events"]) - 1 else 0):
+            break
+        event_row(img, draw, x0, y, x1 - x0, ev, color=WHITE, bg=BLACK, **kw)
+        y += h
+        shown += 1
+    if len(day["events"]) > shown:
+        draw_text_top(draw, (x0, y + 2), f"+ {len(day['events']) - shown} til", f_tiny(13), YELLOW)
+    return True
+
+
+def month_height(today):
+    """Height of the mini month block: header + weekday row + one row per week."""
+    import calendar
+    weeks = len(calendar.Calendar(0).monthdatescalendar(today.year, today.month))
+    return 7 + 17 + 15 + weeks * 13 + 6
+
+
+def _month(draw, today, event_dates, top):
+    """Mini month calendar in the black panel, from y=top (height month_height())."""
+    import calendar
+    x0, x1 = 18, HERO_W - 16
+    cw = (x1 - x0) // 7
+    f_h, f_d = f_bold(13), f_tiny(12)
+    draw.rectangle([x0, top, x1, top], fill=WHITE)
+    y = top + 7
+    from designs.common import MONTHS
+    draw_text_top(draw, (x0, y), MONTHS[today.month - 1].capitalize(), f_h, WHITE)
+    y += 17
+    for i, wd in enumerate("MTOTFLS"):
+        draw_text_top(draw, (x0 + i * cw + cw // 2 - text_w(draw, wd, f_d) // 2, y), wd, f_d,
+                      RED if i >= 5 else WHITE)
+    y += 15
+    rh = 13
+    for week in calendar.Calendar(0).monthdatescalendar(today.year, today.month):
+        for i, d in enumerate(week):
+            if d.month != today.month:
+                continue
+            cx = x0 + i * cw + cw // 2
+            txt = str(d.day)
+            tw = text_w(draw, txt, f_d)
+            if d == today:
+                draw.rectangle([cx - 10, y - 2, cx + 10, y + 11], fill=WHITE)
+                draw_text_top(draw, (cx - tw // 2, y), txt, f_d, BLACK)
+            else:
+                draw_text_top(draw, (cx - tw // 2, y), txt, f_d, RED if i >= 5 else WHITE)
+            if d in event_dates and d != today and d > today:
+                draw.rectangle([cx + tw // 2 + 2, y + 1, cx + tw // 2 + 4, y + 3], fill=YELLOW)
+        y += rh
+
+
+def render(data, opts=None):
+    """
+    opts (all optional, default off):
+      collapse  - repeated all-day events shown once with '(til ...)'
+      tomorrow  - 'I morgen' block in the black panel when there is room
+      month     - mini month calendar at the bottom of the black panel
+      morning   - day headers show the temperature at 08 instead of the max
+    """
+    import os
+    if opts is None:
+        opts = {k: True for k in (os.environ.get("DESIGN_OPTIONS") or "").replace(" ", "").split(",") if k}
     img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
     days = data["days"]
-    _today(img, draw, days[0], data.get("updated", ""), battery=data.get("battery"))
+    if opts.get("collapse"):
+        days = collapse_repeats(days)
+
+    reserve = month_height(data["today"]) if opts.get("month") else 0
+    y_end = _today(img, draw, days[0], data.get("updated", ""), battery=data.get("battery"),
+                   reserve_bottom=reserve)
+    if opts.get("month"):
+        _month(draw, data["today"], {d["date"] for d in days if d["events"]}, H - 26 - reserve)
+
+    list_days = days[1:]
+    if opts.get("tomorrow") and len(days) > 1:
+        if _tomorrow(img, draw, days[1], y_end, H - 26 - reserve):
+            list_days = days[2:]
 
     gap = 12
     left = HERO_W + gap
     col_w = (W - left - gap - 8) // 2
     cols = [left, left + col_w + gap]
     col_i, y = 0, 8
-    for day in days[1:]:
+    for day in list_days:
         h = _day_section(img, draw, 0, 0, col_w, day, measure=True)
         if y + h > H - 6:
             col_i += 1
             y = 8
             if col_i >= len(cols):
                 break
-        _day_section(img, draw, cols[col_i], y, col_w, day)
+        _day_section(img, draw, cols[col_i], y, col_w, day, morning=bool(opts.get("morning")))
         y += h
     return quantize(img)
