@@ -638,25 +638,35 @@ def _husk(img, draw, x, y, w, bottom, days):
     fh = f_bold(15)
     draw_text_top(draw, (x, y + 2), "Husk denne uka", fh, BLACK)
     draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
-    y += 29
+    y += 31
     f = f_body(14)
     ch = cap_height(draw, f)
+    line_h, gap = ch + 9, 9            # line height within a point, space between points
     for text, people in items:
         cw = len(people) * 17
         lines = wrap(draw, text, f, w - 14 - cw, 2)
-        need = len(lines) * (ch + 7) + 4
-        if y + need > bottom - (22 if pickups else 0):
+        need = len(lines) * line_h - 9 + ch // 2 + gap
+        if y + need > bottom - (24 if pickups else 0):
             break
         draw.ellipse([x + 1, y + ch // 2 - 2, x + 6, y + ch // 2 + 3], fill=BLACK)
         for k, ln in enumerate(lines):
-            draw_text_top(draw, (x + 12, y + k * (ch + 7)), ln, f, BLACK)
+            draw_text_top(draw, (x + 12, y + k * line_h), ln, f, BLACK)
         cx = x + w - cw + 1
         for letter, col in people:
             person_chip(draw, cx, y + ch // 2, letter, col, 15)
             cx += 17
         y += need
-    if pickups and y + 20 <= bottom:
-        txt = "  ·  ".join(f"{lab} {WEEKDAYS_SHORT[d.weekday()].lower()} {d.day}." for lab, d in pickups[:3])
+    pickups = pickups[:3]
+    if pickups and items:
+        y += 2
+    labels = [f"{lab} {WEEKDAYS_SHORT[d.weekday()].lower()} {d.day}." for lab, d in pickups]
+    if pickups and y + 21 * len(pickups) <= bottom:      # one pickup per line when there is room
+        for t in labels:
+            paste_icon(img, "trash-2", x, y - 1, 15, BLACK)
+            draw_text_top(draw, (x + 20, y + 1), ellipsize(draw, t, f_body(14), w - 20), f_body(14), BLACK)
+            y += 21
+    elif pickups and y + 20 <= bottom:
+        txt = "  ·  ".join(labels)
         paste_icon(img, "trash-2", x, y - 1, 15, BLACK)
         draw_text_top(draw, (x + 20, y + 1), ellipsize(draw, txt, f_tiny(13), w - 20), f_tiny(13), BLACK)
         y += 22
