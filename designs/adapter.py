@@ -282,4 +282,6 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
         battery = None
     return {"today": today, "now": now, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery,
             "people": data.get("people") or [], "dinner_question": data.get("dinner_question") or "",
-            "warnings": data.get("warnings") or []}
+            "warnings": data.get("warnings") or [],
+            **{k: data.get(k) for k in ("spond_pending", "countdowns", "chores", "dates", "first_snow", "aurora_kp")
+               if data.get(k) is not None}}

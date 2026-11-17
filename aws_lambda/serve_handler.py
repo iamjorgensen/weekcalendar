@@ -327,7 +327,15 @@ def _admin_api(path, method, event, headers):
 
     if path == "/api/status" and method == "GET":
         return _json(200, {"meta": _s3_json(META_KEY, {}), "feeds": _s3_json(FEEDS_STATE_KEY, {}),
+                           "frame_seen": _s3_json("cache/frame_seen.json", {}),
                            "letters": _s3_json(LETTERS_LOG_KEY, [])[-10:]})
+
+    if path == "/api/preview" and method == "GET" and (event.get("queryStringParameters") or {}).get("date"):
+        q = event.get("queryStringParameters") or {}
+        result = _call_render({"action": "preview", "date": q.get("date"), "time": q.get("time") or "07:00"})
+        if not result.get("png"):
+            return _json(400 if "dato" in str(result.get("error", "")) else 502, result)
+        return _resp(200, result["png"], "image/png", b64=True)
 
     if path == "/api/preview" and method == "GET":
         try:

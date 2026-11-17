@@ -122,6 +122,13 @@
         <div><b id="st-events">–</b><span>Hendelser</span></div>
       </div>
       <div class="card small" id="st-list"></div>
+      <h2>Forhåndsvis en dato</h2>
+      <div class="card"><div class="grid2">
+        <div><label class="f" style="margin-top:0">Dato</label><input type="date" id="pv-date"></div>
+        <div><label class="f" style="margin-top:0">Tid</label><select id="pv-time"><option>07:00</option><option>18:00</option></select></div></div>
+        <button class="btn" style="margin-top:10px" onclick="previewDate()">Vis hvordan skjermen ser ut</button>
+        <img class="preview" id="pv-img" style="display:none;margin-top:10px" alt="Forhåndsvisning">
+        <p class="hint">Viser bursdager, høytider og ferier for datoen. Avtaler vises for dagene som allerede ligger i kalenderen. Rammen påvirkes ikke.</p></div>
       <h2>Siste brev lest</h2>
       <div class="card" id="letters"></div>
       <button class="btn" onclick="renderNow()">Lag nytt bilde nå</button>
@@ -135,6 +142,14 @@
         <input id="schoolyear" type="number" style="width:90px" onchange="cfg.school_year=+this.value;dirty()"></div></div>
       <div id="people"></div>
       <button class="btn" onclick="editPerson(-1)">+ Legg til person</button>
+      <h2>Ukas oppgaver</h2>
+      <p class="hint">Går på rundgang – ny person hver uke. Vises under månedskalenderen.</p>
+      <div id="chores"></div>
+      <button class="btn" onclick="editChore(-1)">+ Legg til oppgave</button>
+      <h2>Merkedager</h2>
+      <p class="hint">Faste datoer hvert år, f.eks. bryllupsdag eller dagen hunden kom. Får banner på dagen og nedtelling uka før.</p>
+      <div id="dates"></div>
+      <button class="btn" onclick="editDate(-1)">+ Legg til merkedag</button>
     </section>
 
     <section id="regler">
@@ -280,7 +295,57 @@ async function start() {
   renderAll(); loadStatus();
 }
 
-function renderAll() { renderPeople(); renderRules(); renderFeeds(); renderSpond(); renderView(); }
+function renderAll() { renderPeople(); renderChores(); renderDates(); renderRules(); renderFeeds(); renderSpond(); renderView(); }
+
+function weekNo(d = new Date()) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+}
+function renderChores() {
+  cfg.chores = cfg.chores || [];
+  const wk = weekNo();
+  $("#chores").innerHTML = cfg.chores.map((c, i) => `<div class="card"><div class="row space">
+      <div><b>${esc(c.task)}</b><div class="small muted">Denne uka: ${esc(c.people[wk % c.people.length] || "–")} · rundgang: ${c.people.map(esc).join(" → ")}</div></div>
+      <button class="link" onclick="editChore(${i})">Endre</button></div></div>`).join("")
+    || `<div class="muted small" style="padding:4px 0 8px">Ingen oppgaver ennå.</div>`;
+}
+function editChore(i) {
+  const c = i >= 0 ? cfg.chores[i] : { task: "", people: [], on: true };
+  openDialog(i >= 0 ? `Endre ${c.task}` : "Ny oppgave", `
+    <label class="f">Oppgave</label><input id="c-task" value="${esc(c.task)}" placeholder="f.eks. Oppvask">
+    <label class="f">Hvem (i rekkefølge)</label>
+    <div class="row wrap" style="gap:6px;margin-top:4px">${cfg.people.map((p) =>
+      `<label class="row tag" style="gap:6px;padding:4px 8px"><input type="checkbox" class="c-who" value="${esc(p.name)}" style="width:auto"
+        ${c.people.includes(p.name) ? "checked" : ""}>${esc(p.name)}</label>`).join("")}</div>`,
+    () => {
+      const task = val("c-task").trim(); const people = [...document.querySelectorAll(".c-who:checked")].map((x) => x.value);
+      if (!task || !people.length) { toast("Skriv oppgave og velg minst én"); return false; }
+      const nc = { task, people, on: true };
+      i >= 0 ? (cfg.chores[i] = nc) : cfg.chores.push(nc);
+    }, i >= 0 ? () => cfg.chores.splice(i, 1) : null);
+}
+function renderDates() {
+  cfg.dates = cfg.dates || [];
+  $("#dates").innerHTML = cfg.dates.map((x, i) => `<div class="card"><div class="row space">
+      <div><b>${esc(x.name)}</b><div class="small muted">🗓 ${esc(bdayText(x.date).replace("fyller", "blir"))}</div></div>
+      <button class="link" onclick="editDate(${i})">Endre</button></div></div>`).join("")
+    || `<div class="muted small" style="padding:4px 0 8px">Ingen merkedager ennå.</div>`;
+}
+function editDate(i) {
+  const x = i >= 0 ? cfg.dates[i] : { name: "", date: "", color: "RED", icon: "heart" };
+  openDialog(i >= 0 ? `Endre ${x.name}` : "Ny merkedag", `
+    <label class="f">Navn</label><input id="d-name" value="${esc(x.name)}" placeholder="f.eks. Bryllupsdag">
+    <label class="f">Dato (første gang)</label><input id="d-date" type="date" value="${esc(x.date)}">
+    <label class="f">Farge på banneret</label>${palette(x.color)}
+    <label class="f">Ikon (valgfritt)</label><input id="d-icon" value="${esc(x.icon)}" placeholder="heart, dog, star, home">`,
+    () => {
+      const name = val("d-name").trim(); if (!name || !val("d-date")) { toast("Navn og dato mangler"); return false; }
+      const nx = { name, date: val("d-date"), color: ($("#pal .on") || {}).dataset?.c || "RED",
+        icon: val("d-icon").trim().toLowerCase() || "heart" };
+      i >= 0 ? (cfg.dates[i] = nx) : cfg.dates.push(nx);
+    }, i >= 0 ? () => cfg.dates.splice(i, 1) : null);
+}
 
 async function loadStatus() {
   try {
@@ -294,6 +359,8 @@ async function loadStatus() {
     $("#st-list").innerHTML = `
       <div class="row space"><span>Sist laget</span><span class="muted">${esc(when)} · ${esc(m.trigger || "")}</span></div>
       <div class="row space"><span>Været</span><span class="muted">${esc(m.weather_days ?? "–")} dager</span></div>
+      <div class="row space"><span>Rammen sist sett</span><span class="muted">${esc(j.frame_seen && j.frame_seen.at
+        ? new Date(j.frame_seen.at * 1000).toLocaleString("no", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "–")}</span></div>
       <div class="row space"><span>Abonnement synket</span><span class="muted">${esc(feeds)}</span></div>
       ${Object.values((j.feeds && j.feeds.result) || {}).filter((f) => f && f.name).map((f) => `
         <div class="row space small"><span style="padding-left:10px">${esc(f.name)}</span><span class="muted">${f.error
@@ -308,6 +375,15 @@ async function loadStatus() {
     const p = await api("/api/preview");
     if (p.ok) $("#preview").src = URL.createObjectURL(await p.blob());
   } catch (e) { /* status is best-effort */ }
+}
+
+async function previewDate() {
+  const d = $("#pv-date").value;
+  if (!d) return toast("Velg en dato");
+  toast("Lager forhåndsvisning …");
+  const r = await api(`/api/preview?date=${encodeURIComponent(d)}&time=${encodeURIComponent($("#pv-time").value)}`);
+  if (!r.ok) { const j = await r.json().catch(() => ({})); return toast(j.error || "Kunne ikke lage forhåndsvisning"); }
+  const img = $("#pv-img"); img.src = URL.createObjectURL(await r.blob()); img.style.display = "";
 }
 
 async function renderNow() {
@@ -516,6 +592,11 @@ function palette(sel) {
 }
 const val = (id) => document.getElementById(id).value;
 
+function ndIso(t) {   // "14.03" -> "03-14"
+  const m = String(t || "").trim().match(/^(\d{1,2})[.\/-](\d{1,2})$/);
+  return m ? `${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
+}
+
 function bdayText(iso) {
   const b = new Date(iso + "T12:00:00"), now = new Date(); now.setHours(12, 0, 0, 0);
   if (isNaN(b)) return iso;
@@ -536,6 +617,8 @@ function editPerson(i) {
       ${["barn", "voksen", "dyr", ""].map((k) => `<option value="${k}" ${p.kind === k ? "selected" : ""}>${k || "–"}</option>`).join("")}</select></div>
       <div><label class="f">Trinn (dette skoleåret)</label><input id="p-grade" type="number" min="1" max="13" value="${p.grade || ""}"></div></div>
     <div class="grid2"><div><label class="f">Bursdag</label><input id="p-bday" type="date" value="${esc(p.birthday || "")}"></div>
+      <div><label class="f">Navnedag (dag.måned)</label><input id="p-nd" placeholder="f.eks. 14.03" value="${p.nameday ? esc(p.nameday.split("-").reverse().join(".")) : ""}"></div></div>
+    <div class="grid2">
       <div><label class="f">Feire på skjermen</label><select id="p-cel"><option value="1">Ja</option>
         <option value="0" ${p.celebrate === false ? "selected" : ""}>Nei</option></select></div></div>
     <label class="f">Grupper (skole, lag) – komma mellom</label><input id="p-groups" value="${esc(p.groups.join(", "))}" placeholder="f.eks. Sild">
@@ -546,7 +629,8 @@ function editPerson(i) {
       const np = { name, letter: (val("p-letter").trim() || name[0]).toUpperCase(),
         color: ($("#pal .on") || {}).dataset?.c || "BLACK", kind: val("p-kind"),
         grade: val("p-grade") ? +val("p-grade") : null, groups: list(val("p-groups")), words: list(val("p-words")),
-        birthday: val("p-bday"), celebrate: val("p-cel") !== "0" };
+        birthday: val("p-bday"), celebrate: val("p-cel") !== "0", nameday: ndIso(val("p-nd")) };
+      if (val("p-nd") && !np.nameday) { toast("Navnedag: skriv dag.måned, f.eks. 14.03"); return false; }
       if (i >= 0) {
         const old = cfg.people[i].name;
         if (old !== name) {   // keep references in rules and feeds

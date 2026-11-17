@@ -51,23 +51,41 @@ def groups(token):
     return out
 
 
-def my_member_ids(token, group_list=None):
+def my_members(token, group_list=None):
     """
-    Member ids in the account's groups that are "us": the account holder's own
-    membership, or members (children) the account holder is guardian for.
+    {member id: first name} for the members in the account's groups that are "us": the
+    account holder's own membership, or members (children) the account holder is guardian for.
     """
     me = (_request("GET", "profile", token) or {}).get("id")
     if not me:
         raise SpondError("Fant ikke Spond-profilen din")
-    ids = set()
+    out = {}
     for g in (group_list if group_list is not None else _request("GET", "groups/", token)) or []:
         for m in g.get("members") or []:
             prof = (m.get("profile") or {}).get("id")
             guardians = {(gd.get("profile") or {}).get("id") for gd in m.get("guardians") or []}
-            if prof == me or me in guardians:
-                ids.add(m.get("id"))
-    ids.discard(None)
-    return ids
+            if m.get("id") and (prof == me or me in guardians):
+                out[m["id"]] = str(m.get("firstName") or "").strip()
+    return out
+
+
+def my_member_ids(token, group_list=None):
+    return set(my_members(token, group_list))
+
+
+def unanswered(spond_events, members, now=None, days=14):
+    """Events in the next `days` days that one of us has not answered: [{start, title, who}]."""
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for e in spond_events or []:
+        start = _ts(e.get("startTimestamp"))
+        if not start or e.get("cancelled") or not (now <= start <= now + timedelta(days=days)):
+            continue
+        ids = set((e.get("responses") or {}).get("unansweredIds") or []) & set(members)
+        if ids:
+            out.append({"start": start.isoformat(), "title": str(e.get("heading") or "").strip()[:40],
+                        "who": sorted({members[i] for i in ids if members[i]})})
+    return out
 
 
 def accepted(spond_event, member_ids):

@@ -9,7 +9,7 @@
 
 Pure functions on design data; the drawing is in splash.py.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from designs.common import BLACK, BLUE, GREEN, RED, WHITE, YELLOW
 
@@ -178,10 +178,44 @@ def _b(title, big, small, icon, bg, decor, fg=None, icon_col=None, **kw):
     return dict(title=title, big=big, small=small, icon=icon, bg=bg, decor=decor, fg=fg, icon_col=icon_col, **kw)
 
 
-def banner(day, people=(), today=None):
+def yearly(dates, d):
+    """[(entry, years or None)] for the admin page's yearly dates (wedding day, dog's homecoming ...)."""
+    out = []
+    for x in dates or []:
+        try:
+            b = date.fromisoformat(x.get("date") or "")
+        except ValueError:
+            continue
+        if (b.month, b.day) == (d.month, d.day) and d.year >= b.year:
+            out.append((x, d.year - b.year or None))
+    return out
+
+
+def namedays(people, d):
+    return [p for p in people or [] if p.get("nameday") == f"{d.month:02d}-{d.day:02d}"]
+
+
+def banner(day, people=(), today=None, dates=(), first_snow=False):
     """The banner for the black panel's day, or None."""
     d = day["date"]
     events = day.get("events") or []
+    b = _banner(day, d, events, people, dates)
+    if b:
+        return b
+    nd = namedays(people, d)
+    if nd:
+        p = nd[0]
+        b = _b(f"Gratulerer, {' og '.join(x['name'] for x in nd)}!", "Navnedag", "i dag", "star",
+               COLOR.get(p.get("color", "YELLOW"), YELLOW), "party")
+        if b["bg"] == BLACK:
+            b.update(fg=YELLOW, edge="rainbow")
+        return b
+    if first_snow:
+        return _b("Første snø!", "Snø i dag", "Finn fram akebrettet", "cloud-snow", BLUE, "snow")
+    return None
+
+
+def _banner(day, d, events, people, dates=()):
 
     # 1. birthdays (two on the same day share the banner)
     bdays = birthdays(people, d)
@@ -200,6 +234,16 @@ def banner(day, people=(), today=None):
                birthday=[x["name"] for x, _ in bdays])
         if bg == BLACK:
             b.update(fg=YELLOW, edge="rainbow")     # black on black: gold text and a rainbow edge
+        return b
+
+    yd = yearly(dates, d)
+    if yd:
+        x, years = yd[0]
+        bg = COLOR.get(x.get("color", "RED"), RED)
+        b = _b(f"{x['name']}!", str(years) if years else "I dag", "år i dag!" if years else "",
+               x.get("icon") or "heart", bg, "party")
+        if bg == BLACK:
+            b.update(fg=YELLOW, edge="rainbow")
         return b
 
     off = [e for e in events if e.get("is_holiday")]
@@ -276,7 +320,19 @@ def _plural(n, one, many):
     return f"{n} {one if n == 1 else many}"
 
 
-def lines(days, people=(), now=None, dinner_question="", evening=False, max_lines=2):
+SYNODIC = 29.530588853
+NEW_MOON = datetime(2000, 1, 6, 18, 14)       # a known new moon (UTC)
+
+
+def full_moon_tonight(d):
+    """True if a full moon falls between noon today and noon tomorrow (UTC, close enough)."""
+    a = (datetime(d.year, d.month, d.day, 12) - NEW_MOON).total_seconds() / 86400
+    age = a % SYNODIC
+    return age <= SYNODIC / 2 < age + 1
+
+
+def lines(days, people=(), now=None, dinner_question="", evening=False, max_lines=2, spond_pending=(),
+          countdowns=(), aurora_kp=None, dates=()):
     """Short yellow lines under the weather, most useful first."""
     if not days:
         return []
@@ -285,6 +341,25 @@ def lines(days, people=(), now=None, dinner_question="", evening=False, max_line
 
     if evening and dinner_question:
         out.append(f"Middagsspørsmål: {dinner_question}")
+
+    # Spond invitations nobody in the family has answered
+    for p in list(spond_pending or [])[:1]:
+        try:
+            st = datetime.fromisoformat(p["start"])
+            try:
+                from zoneinfo import ZoneInfo
+                st = st.astimezone(ZoneInfo("Europe/Oslo"))
+            except Exception:
+                pass
+            when = f"{WEEKDAY_SHORT[st.weekday()]} {st:%H:%M}"
+        except (KeyError, ValueError):
+            when = ""
+        who = " og ".join(p.get("who") or [])
+        out.append(f"Svar på Spond: {p.get('title', '')} {when}" + (f" ({who})" if who else ""))
+
+    # northern lights (Kp 5+ is usually visible in southern Norway on a clear night)
+    if aurora_kp is not None and aurora_kp >= 5:
+        out.append(f"Nordlys mulig i kveld (Kp {aurora_kp:.0f}) – hvis det er klart")
 
     # birthdays coming up (tomorrow .. 7 days)
     for n in range(1, 8):
@@ -295,6 +370,28 @@ def lines(days, people=(), now=None, dinner_question="", evening=False, max_line
             what = f"{p['name']} {age} år" if age else f"{p['name']} sin bursdag"
             out.append(f"I morgen: {what}!" if n == 1 else f"{_plural(n, 'dag', 'dager')} til {what}")
             break
+
+    # yearly dates (wedding day ...) within a week
+    for n in range(1, 8):
+        yd = yearly(dates, today + timedelta(days=n))
+        if yd:
+            x, _y = yd[0]
+            out.append(f"I morgen: {x['name']}!" if n == 1 else f"{_plural(n, 'dag', 'dager')} til {x['name'].lower()}")
+            break
+
+    # name day tomorrow
+    nd = namedays(people, today + timedelta(days=1))
+    if nd:
+        out.append(f"Navnedag i morgen: {' og '.join(p['name'] for p in nd)}")
+
+    # ⏳ countdowns from the calendar (the nearest one)
+    for c in sorted(countdowns or [], key=lambda c: c.get("date", ""))[:1]:
+        try:
+            n = (date.fromisoformat(c["date"]) - today).days
+        except (KeyError, ValueError):
+            continue
+        if n >= 1:
+            out.append(f"I morgen: {c['title']}!" if n == 1 else f"{_plural(n, 'dag', 'dager')} til {c['title']}")
 
     # special days tomorrow
     sp = special_days((today + timedelta(days=1)).year).get(today + timedelta(days=1))
@@ -329,6 +426,9 @@ def lines(days, people=(), now=None, dinner_question="", evening=False, max_line
         out.append("Sommersolverv – årets lengste dag")
     elif (today.month, today.day) == (12, 21):
         out.append("Vintersolverv – nå blir dagene lengre")
+
+    if full_moon_tonight(today):
+        out.append("Fullmåne i natt")
 
     # nice weekend ahead (on Fridays)
     if today.weekday() == 4:

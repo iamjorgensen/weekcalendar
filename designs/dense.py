@@ -128,7 +128,7 @@ def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, ext
     for text in extra_lines or ():    # countdowns, clock change, dinner question (may take two lines)
         from designs.common import wrap
         f_ln = f_body(14)
-        two = text.startswith("Middagsspørsmål") or "farevarsel" in text
+        two = text.startswith(("Middagsspørsmål", "Svar på Spond")) or "farevarsel" in text
         for part in wrap(draw, text, f_ln, x1 - x0, 2 if two else 1):
             draw_text_top(draw, (x0, y), part, f_ln, YELLOW)
             y += 19
@@ -163,7 +163,12 @@ def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, ext
     draw_text_top(draw, (x1 - text_w(draw, up, f_up), H - 17), up, f_up, WHITE)
     if battery is not None:
         draw_battery(draw, x0, H - 17 + cap_height(draw, f_up) // 2, battery, WHITE)
+        if battery < LOW_BATTERY:     # "Bytt batteri!" next to the battery
+            draw_text_top(draw, (x0 + 66, H - 17), "Bytt batteri!", f_bold(12), YELLOW)
     return y
+
+
+LOW_BATTERY = 15
 
 
 # ------------------------------------------------------------------ day list
@@ -495,6 +500,26 @@ def _upcoming(img, draw, x, y, w, bottom, days):
     return y + 6
 
 
+def _chores(img, draw, x, y, w, bottom, chores):
+    """'Denne uka': the rota from the admin page, one line per task with the person's chip."""
+    from designs.moments import COLOR
+    if not chores or bottom - y < 44:
+        return y
+    fh = f_bold(15)
+    draw_text_top(draw, (x, y + 2), "Denne uka", fh, BLACK)
+    draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
+    y += 28
+    f = f_body(14)
+    for c in chores:
+        if y + 20 > bottom:
+            break
+        draw_text_top(draw, (x, y), ellipsize(draw, c["task"], f, w // 2 - 4), f, BLACK)
+        person_chip(draw, x + w // 2, y + cap_height(draw, f) // 2, c["letter"], COLOR.get(c["color"], BLACK), 15)
+        draw_text_top(draw, (x + w // 2 + 22, y), ellipsize(draw, c["name"], f, w // 2 - 24), f, BLACK)
+        y += 20
+    return y + 6
+
+
 HUSK_RE = re.compile(r"\b(husk|ta med|ha med|ta på|må ha)\b", re.I)
 
 
@@ -629,14 +654,17 @@ def render(data, opts=None):
     if opts.get("moments"):
         from designs import moments
         people = data.get("people") or []
-        banner = None if evening else moments.banner(days[0], people)
+        banner = None if evening else moments.banner(days[0], people, dates=data.get("dates"),
+                                                     first_snow=bool(data.get("first_snow")))
         if banner and banner.get("birthday"):   # the banner says it; drop "Nora 10 år" from today's list
             names = [n.lower() for n in banner["birthday"]]
             days[0] = dict(days[0], events=[e for e in days[0]["events"] if not (
                 any(n in e["title"].lower() for n in names)
                 and ("år" in e["title"] or "bursdag" in e["title"].lower()))])
         extra = moments.lines(days, people, now=now, dinner_question=data.get("dinner_question", ""),
-                              evening=evening)
+                              evening=evening, spond_pending=data.get("spond_pending") or [],
+                              countdowns=data.get("countdowns") or [], aurora_kp=data.get("aurora_kp"),
+                              dates=data.get("dates") or [])
         days = moments.birthday_events(days, people, skip=days[0]["date"] if banner and banner.get("birthday")
                                        else None)
     # a red warning beats everything, an orange one everything but a birthday
@@ -705,6 +733,7 @@ def render(data, opts=None):
     if below is not None:
         bx, by = below
         later = [d for d in days if last_shown is None or d["date"] > last_shown]
+        by = _chores(img, draw, bx, by, col_w, H - 6, data.get("chores") or [])
         for key in [k for k in ("husk", "upcoming", "weather5") if opts.get(k)]:
             if key == "husk":
                 by = _husk(img, draw, bx, by, col_w, H - 6, husk_days)

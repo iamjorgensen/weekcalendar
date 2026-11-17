@@ -1,0 +1,133 @@
+"""Spond answers, rota, ⏳ countdowns, yearly dates, name days, first snow, moon/aurora, watchdog, preview."""
+import json
+import os
+import sys
+from datetime import date, datetime, timezone
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "aws_lambda"))
+
+import config_store  # noqa: E402
+import extras  # noqa: E402
+import spond_client  # noqa: E402
+import watchdog_handler  # noqa: E402
+from designs import dense, moments  # noqa: E402
+from designs.common import RED, YELLOW  # noqa: E402
+from test_moments import day  # noqa: E402
+
+PEOPLE = [{"name": "Nora", "letter": "N", "color": "YELLOW", "birthday": "", "nameday": "11-19"},
+          {"name": "Emil", "letter": "E", "color": "GREEN", "birthday": "", "nameday": "03-14"}]
+
+
+def test_spond_unanswered():
+    now = datetime(2026, 11, 17, 6, tzinfo=timezone.utc)
+    evs = [{"heading": "Kamp mot Sprint", "startTimestamp": "2026-11-21T10:00:00Z",
+            "responses": {"unansweredIds": ["M1"], "acceptedIds": []}},
+           {"heading": "Trening", "startTimestamp": "2026-11-19T16:00:00Z", "responses": {"acceptedIds": ["M1"]}},
+           {"heading": "Avlyst", "cancelled": True, "startTimestamp": "2026-11-20T16:00:00Z",
+            "responses": {"unansweredIds": ["M1"]}},
+           {"heading": "Langt fram", "startTimestamp": "2027-01-20T16:00:00Z", "responses": {"unansweredIds": ["M1"]}}]
+    out = spond_client.unanswered(evs, {"M1": "Oskar", "M9": "Lars"}, now=now)
+    assert out == [{"start": "2026-11-21T10:00:00+00:00", "title": "Kamp mot Sprint", "who": ["Oskar"]}]
+    line = moments.lines([day(date(2026, 11, 17))], [], now=datetime(2026, 11, 17, 6), spond_pending=out)
+    assert line[0] == "Svar på Spond: Kamp mot Sprint lør 11:00 (Oskar)"
+
+
+def test_rota_rotates_weekly_and_validates():
+    cfg = config_store.validate({"people": [{"name": "Nora", "color": "YELLOW"}, {"name": "Emil"}],
+                                 "chores": [{"task": "Oppvask", "people": ["Nora", "Emil"]}]})
+    w47 = config_store.chores_for_week(cfg, date(2026, 11, 17))     # ISO week 47
+    w48 = config_store.chores_for_week(cfg, date(2026, 11, 24))
+    assert w47[0]["name"] != w48[0]["name"] and {w47[0]["name"], w48[0]["name"]} == {"Nora", "Emil"}
+    import pytest
+    with pytest.raises(config_store.ConfigError):
+        config_store.validate({"people": [{"name": "Nora"}], "chores": [{"task": "X", "people": ["Ola"]}]})
+
+
+def test_yearly_dates_and_namedays():
+    dates = [{"name": "Bryllupsdag", "date": "2012-06-16", "color": "RED", "icon": "heart"}]
+    b = moments.banner(day(date(2026, 6, 16)), PEOPLE, dates=dates)
+    assert b["title"] == "Bryllupsdag!" and b["big"] == "14" and b["bg"] == RED
+    assert moments.lines([day(date(2026, 6, 13))], [], now=datetime(2026, 6, 13, 7), dates=dates) == \
+        ["3 dager til bryllupsdag"]
+    nd = moments.banner(day(date(2026, 11, 19)), PEOPLE)
+    assert nd["title"] == "Gratulerer, Nora!" and nd["big"] == "Navnedag" and nd["bg"] == YELLOW
+    assert "Navnedag i morgen: Nora" in moments.lines([day(date(2026, 11, 18))], PEOPLE, now=datetime(2026, 11, 18, 7))
+    cfg = config_store.validate({"people": [{"name": "Nora", "nameday": "11-19"}],
+                                 "dates": [{"name": "Bamse kom", "date": "2022-08-01", "icon": "dog"}]})
+    assert cfg["people"][0]["nameday"] == "11-19" and cfg["dates"][0]["color"] == "RED"
+
+
+def test_countdowns_from_calendar(monkeypatch):
+    items = {"items": [{"summary": "⏳ Syden", "start": {"date": "2027-01-20"}},
+                       {"summary": "Uten markør", "start": {"date": "2027-01-21"}}]}
+    seen = {}
+    monkeypatch.setattr(extras, "_get_json", lambda url, timeout=8: (seen.setdefault("url", url), items)[1])
+    out = extras.countdowns("key", "cal@group", date(2026, 11, 17))
+    assert out == [{"date": "2027-01-20", "title": "Syden"}] and "q=%E2%8F%B3" in seen["url"]
+    assert moments.lines([day(date(2026, 11, 17))], [], now=datetime(2026, 11, 17, 7), countdowns=out) == \
+        ["64 dager til Syden"]
+
+
+class S3:
+    def __init__(self):
+        self.d = {}
+
+    def get_object(self, Bucket, Key):
+        import io
+        if Key not in self.d:
+            raise KeyError(Key)
+        return {"Body": io.BytesIO(self.d[Key])}
+
+    def put_object(self, Bucket, Key, Body, **kw):
+        self.d[Key] = Body
+
+
+def test_first_snow_once_per_season():
+    s3 = S3()
+    assert not extras.first_snow(s3, "b", date(2026, 11, 10), "Skyet")
+    assert extras.first_snow(s3, "b", date(2026, 11, 17), "Lett snø")
+    assert extras.first_snow(s3, "b", date(2026, 11, 17), "Lett snø")      # the whole day
+    assert not extras.first_snow(s3, "b", date(2026, 11, 20), "Snø")      # not again this season
+    assert extras.first_snow(s3, "b", date(2027, 10, 30), "Snø")          # next season
+    b = moments.banner(day(date(2026, 11, 17)), [], first_snow=True)
+    assert b["title"] == "Første snø!"
+
+
+def test_moon_and_aurora():
+    assert moments.full_moon_tonight(date(2026, 11, 24))       # full moon 24 Nov 2026
+    assert not moments.full_moon_tonight(date(2026, 11, 17))
+    rows = [["time_tag", "kp", "observed", "noaa_scale"], ["2026-11-17 18:00:00", "5.33", "predicted", "G1"],
+            ["2026-11-18 12:00:00", "7.00", "predicted", "G3"]]
+    start = datetime(2026, 11, 17, 17, tzinfo=timezone.utc)
+    from datetime import timedelta
+    assert extras.parse_kp(rows, start, start + timedelta(hours=9)) == 5.33
+    assert extras.parse_kp([{"time_tag": "2026-11-17T21:00:00", "kp": 3}], start, start + timedelta(hours=9)) == 3
+    assert any("Nordlys" in x for x in moments.lines([day(date(2026, 11, 17))], [], now=datetime(2026, 11, 17, 7),
+                                                     aurora_kp=5.3))
+
+
+def test_watchdog_alerts_once():
+    now = 2_000_000_000
+    alerts, state = watchdog_handler.check({"at": now - 30 * 3600, "battery": 12}, {}, now)
+    assert len(alerts) == 2 and "batteri" in alerts[1][0].lower()
+    again, state2 = watchdog_handler.check({"at": now - 30 * 3600, "battery": 12}, state, now + 3600)
+    assert again == []
+    fine, _ = watchdog_handler.check({"at": now - 3600, "battery": 80}, {}, now)
+    assert fine == []
+
+
+def test_low_battery_text_on_frame():
+    d = date(2026, 11, 17)
+    data = {"today": d, "now": datetime(2026, 11, 17, 7), "updated": "07:00", "battery": 9,
+            "days": [day(d)] + [day(date(2026, 11, 17 + i)) for i in range(1, 5)]}
+    img = dense.render(data, {})
+    assert YELLOW in [img.getpixel((x, 470)) for x in range(84, 160)]    # "Bytt batteri!"
+
+
+def test_render_handler_preview_returns_png(monkeypatch):
+    import render_handler
+    monkeypatch.setattr(render_handler, "_oslo_today", lambda: date(2026, 11, 17))
+    assert "error" in render_handler.handler({"action": "preview", "date": "2020-01-01"}, None)
+    assert "error" in render_handler.handler({"action": "preview", "date": "nope"}, None)

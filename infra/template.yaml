@@ -322,6 +322,7 @@ Resources:
               Resource:
                 - !Sub "${ImageBucket.Arn}/log/*"
                 - !Sub "${ImageBucket.Arn}/cache/feeds_sync.json"
+                - !Sub "${ImageBucket.Arn}/cache/frame_seen.json"
             - Sid: DecryptSecureStringsViaSsm
               Effect: Allow
               Action: kms:Decrypt
@@ -339,6 +340,52 @@ Resources:
               Effect: Allow
               Action: s3:PutObject
               Resource: !Sub "${ImageBucket.Arn}/inbox/*"
+
+  # ---------------------------------------------------------------- watchdog
+  WatchdogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-watchdog"
+      Description: Daily push alert (ntfy) if the frame stops updating or its battery is low.
+      PackageType: Zip
+      Runtime: python3.12
+      CodeUri: ../aws_lambda/
+      Handler: watchdog_handler.handler
+      Timeout: 30
+      MemorySize: 128
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: FrameState
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource:
+                - !Sub "${ImageBucket.Arn}/cache/frame_seen.json"
+                - !Sub "${ImageBucket.Arn}/cache/watchdog.json"
+            - Sid: NtfyTopic
+              Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/NTFY_TOPIC"
+            - Sid: DecryptSecureStringsViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+      Events:
+        Daily:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub "${AWS::StackName}-watchdog"
+            ScheduleExpression: "cron(0 12 * * ? *)"
+            ScheduleExpressionTimezone: Europe/Oslo
+
+  WatchdogLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${WatchdogFunction}"
+      RetentionInDays: 14
 
   ServeLogGroup:
     Type: AWS::Logs::LogGroup

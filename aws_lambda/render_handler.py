@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -176,6 +176,8 @@ def render(main, mappings, data, days, errors):
 
 
 FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
+SPOND_PENDING_KEY = CACHE_PREFIX + "spond_pending.json"
+FRAME_SEEN_KEY = CACHE_PREFIX + "frame_seen.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
 FEEDS_CODE_VERSION = "7"   # 4: Spond
@@ -245,17 +247,21 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
             if not params.get("SPOND_EMAIL") or not params.get("SPOND_PASSWORD"):
                 raise spond_client.SpondError("SPOND_EMAIL/SPOND_PASSWORD mangler i Parameter Store")
             token = spond_client.login(params["SPOND_EMAIL"], params["SPOND_PASSWORD"])
-            mine = None
+            try:
+                mine = spond_client.my_members(token)
+            except Exception as e:
+                logger.warning("Spond members: %s", e)
+                mine = {}
+            pending = []
             for g in spond_groups:
                 fid = "spond-" + g["id"][:16]
                 try:
                     raw = spond_client.events(token, g["id"])
+                    pending += spond_client.unanswered(raw, mine)      # "Svar på Spond: ..."
                     if g.get("only_accepted"):   # only events one of us has said yes to
-                        if mine is None:
-                            mine = spond_client.my_member_ids(token)
                         if not mine:   # never wipe a group because we could not tell who "we" are
                             raise spond_client.SpondError("fant ikke deg eller barna som medlem i gruppene")
-                        raw = [e for e in raw if spond_client.accepted(e, mine)]
+                        raw = [e for e in raw if spond_client.accepted(e, set(mine))]
                     evs = spond_client.to_feed_events(raw, g.get("name", ""))
                     result[fid] = feeds.sync_events(session, params["CALENDAR_ID"], evs, g.get("tags", []), fid,
                                                     today, days_ahead=90, icon=g.get("icon", ""))
@@ -264,6 +270,11 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
                     logger.exception("Spond group sync failed")
                     errors.append(f"spond {g.get('name')}: {e}")
                     result[fid] = {"name": "Spond: " + (g.get("name") or ""), "error": str(e)[:300]}
+            try:
+                s3.put_object(Bucket=bucket, Key=SPOND_PENDING_KEY, ContentType="application/json",
+                              Body=json.dumps(sorted(pending, key=lambda x: x["start"]), ensure_ascii=False).encode("utf-8"))
+            except Exception:
+                logger.exception("Could not store Spond pending answers")
         except Exception as e:
             errors.append(f"spond: {e}")
             result["spond"] = {"name": "Spond", "error": str(e)[:300]}
@@ -286,6 +297,64 @@ def weather_warnings(errors):
     except Exception as e:
         logger.warning("MET alerts failed: %s", e)    # best effort: no warning shown, not an error
         return []
+
+
+def _oslo_today():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Europe/Oslo")).date()
+    except Exception:
+        return datetime.now(timezone.utc).date()
+
+
+def render_preview(main, data, days, d, hhmm):
+    """PNG (base64) of the frame as it would look on date d at hh:mm. Events are those already known."""
+    import base64
+    import io
+    from designs import render_design
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Europe/Oslo")
+    except Exception:
+        tz = timezone.utc
+    h, m = (int(x) for x in (hhmm.split(":") + ["0"])[:2])
+    now = datetime(d.year, d.month, d.day, min(23, h), min(59, m), tzinfo=tz)
+    img = render_design(os.environ.get("DESIGN", "dense"), data, days,
+                        icon_manager=main.opts.get("icon_manager"), now=now)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return {"png": base64.b64encode(buf.getvalue()).decode("ascii"), "date": d.isoformat()}
+
+
+def add_extras(data, cfg, s3, bucket, today=None, preview=False):
+    """Spond answers, chores, ⏳ countdowns, yearly dates, first snow, northern lights. Each is best effort."""
+    import extras
+    today = today or _oslo_today()
+
+    def safe(name, fn, default):
+        try:
+            return fn()
+        except Exception as e:
+            logger.warning("extra %s failed: %s", name, e)
+            return default
+
+    def pending():
+        rows = json.loads(s3.get_object(Bucket=bucket, Key=SPOND_PENDING_KEY)["Body"].read())
+        return [r for r in rows if r.get("start", "")[:10] >= today.isoformat()]
+    data["spond_pending"] = safe("spond_pending", pending, [])
+    data["countdowns"] = safe("countdowns", lambda: extras.countdowns(
+        os.environ.get("API_KEY_GOOGLE"), os.environ.get("CALENDAR_ID"), today), [])
+    if cfg is not None:
+        import config_store
+        data["chores"] = config_store.chores_for_week(cfg, today)
+        data["dates"] = cfg.get("dates") or []
+    w0 = next((w for w in data.get("weather") or [] if str(w.get("date", ""))[:10] == today.isoformat()), {})
+    if preview:      # never remember "first snow" from a preview
+        data["first_snow"], data["aurora_kp"] = False, None
+        return
+    data["first_snow"] = safe("first_snow", lambda: extras.first_snow(
+        s3, bucket, today, w0.get("condition") or w0.get("symbol")), False)
+    data["aurora_kp"] = safe("aurora", lambda: extras.aurora_kp(today), None)
 
 
 DINNER_KEY = "log/dinner.json"
@@ -359,6 +428,15 @@ def handler(event, context):
         return spond_cleanup(event)
     if event.get("action") == "spond_test":
         return spond_test()
+    # Admin page "Forhåndsvis dato": render a given date without touching the frame's image
+    preview = None
+    if event.get("action") == "preview":
+        try:
+            preview = date.fromisoformat(str(event.get("date")))
+        except ValueError:
+            return {"error": "ugyldig dato"}
+        if not 0 <= (preview - _oslo_today()).days <= 366:
+            return {"error": "velg en dato fra i dag og ett år fram"}
     bucket = os.environ["BUCKET_NAME"]
     days = int(os.environ.get("RENDER_DAYS", "7"))
     errors = []
@@ -387,7 +465,8 @@ def handler(event, context):
     # calendar before we read it, so new matches show up in this same render.
     feeds_status = None
     try:
-        feeds_status = sync_calendar_feeds(s3, bucket, errors, force=bool(event.get("force_feeds")), cfg=cfg)
+        if preview is None:
+                feeds_status = sync_calendar_feeds(s3, bucket, errors, force=bool(event.get("force_feeds")), cfg=cfg)
     except Exception as e:
         logger.exception("Feed sync crashed")
         errors.append(f"feeds: {e}")
@@ -413,8 +492,9 @@ def handler(event, context):
         data_provider._google_holidays = data_provider.fetch_google_holiday_events
     data_provider.fetch_google_holiday_events = ((lambda *a, **k: []) if use_code_holidays
                                                  else data_provider._google_holidays)
+    offset = (preview - _oslo_today()).days if preview else 0
     try:
-        data = fetch_data(data_provider, days) or {}
+        data = fetch_data(data_provider, days + offset) or {}
     except Exception as e:
         logger.exception("Data fetch failed")
         errors.append(f"fetch: {e}")
@@ -422,7 +502,7 @@ def handler(event, context):
 
     if use_code_holidays:
         from designs import moments
-        today = datetime.now(timezone.utc).date()
+        today = preview or datetime.now(timezone.utc).date()
         data["events"] = list(data.get("events") or []) + moments.holiday_events(
             today - timedelta(days=1), today + timedelta(days=max(days, 14) + 45),
             julaften=hol.get("julaften", True), nyttarsaften=hol.get("nyttarsaften", True))
@@ -430,12 +510,16 @@ def handler(event, context):
         import config_store
         data["people"] = config_store.people_for_design(cfg)
     data["dinner_question"] = dinner_question(s3, bucket)
-    data["warnings"] = weather_warnings(errors)
+    data["warnings"] = weather_warnings(errors) if preview is None else []
+    add_extras(data, cfg, s3, bucket, today=preview, preview=preview is not None)
 
     battery = event.get("battery")
     if not isinstance(battery, int) or not 0 <= battery <= 100:
         battery = last_known_battery(s3, bucket)  # e.g. a POST /render or a schedule run
     data["battery"] = battery
+
+    if preview is not None:
+        return render_preview(main, data, days, preview, event.get("time") or "07:00")
 
     img = render(main, mappings, data, days, errors)
 
@@ -464,6 +548,13 @@ def handler(event, context):
     }
     s3.put_object(Bucket=bucket, Key=META_KEY, Body=json.dumps(meta, indent=1).encode("utf-8"),
                   ContentType="application/json", CacheControl="no-store")
+
+    if event.get("source") == "serve-fresh":     # the frame itself asked: it is alive (for the watchdog)
+        try:
+            s3.put_object(Bucket=bucket, Key=FRAME_SEEN_KEY, ContentType="application/json",
+                          Body=json.dumps({"at": time.time(), "battery": event.get("battery")}).encode("utf-8"))
+        except Exception:
+            logger.exception("Could not store frame_seen")
 
     save_caches(s3, bucket, known_icons)
     logger.info("Render done: %s", json.dumps(meta))

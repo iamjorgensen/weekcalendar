@@ -12,7 +12,7 @@ COPY main.py data_provider.py layout_renderer.py mappings.py inky_icons_package.
 COPY aws_lambda/aws_common.py aws_lambda/render_handler.py ${LAMBDA_TASK_ROOT}/
 COPY designs/*.py ${LAMBDA_TASK_ROOT}/designs/
 COPY school/*.py ${LAMBDA_TASK_ROOT}/school/
-COPY aws_lambda/ingest_handler.py aws_lambda/config_store.py aws_lambda/spond_client.py aws_lambda/met_alerts.py ${LAMBDA_TASK_ROOT}/
+COPY aws_lambda/ingest_handler.py aws_lambda/config_store.py aws_lambda/spond_client.py aws_lambda/met_alerts.py aws_lambda/extras.py ${LAMBDA_TASK_ROOT}/
 
 # Fonts and bundled icons only (see .dockerignore for what is excluded)
 COPY assets/fonts/ ${LAMBDA_TASK_ROOT}/assets/fonts/

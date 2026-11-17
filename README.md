@@ -28,6 +28,7 @@ Settings are managed from a web page on your phone.
   - [5. The admin page](#5-the-admin-page)
   - [6. Send school letters from your phone](#6-send-school-letters-from-your-phone)
   - [7. Sports schedules and Spond](#7-sports-schedules-and-spond)
+  - [8. Alerts](#8-alerts)
 - [Display options](#display-options)
 - [Costs](#costs)
 - [Security](#security)
@@ -78,13 +79,20 @@ On a birthday the top of the black panel becomes a tall banner in that person's 
 | Days off | Planleggingsdag and other days off: "Fri i dag! Nora og Emil har fri" |
 | Other days | Morsdag, farsdag, fastelavn, Lucia, Sankthans and Halloween |
 | Match day | A fixture from a calendar feed: "Kampdag! 20:45" |
+| Name day / yearly dates | "Gratulerer, Emil! Navnedag" and your own dates such as "Bryllupsdag! 14 år i dag" (set on the admin page) |
+| First snow | "Første snø!" the first morning of the season with snow in the forecast |
 | Weather warning | MET Norway's farevarsler for your location: orange and red get the banner ("Farevarsel! Styrtregn"), yellow a line ("Gult farevarsel: Kuling til kl 18 – sikre løse ting ute"). A red warning beats everything, an orange one everything except a birthday. |
 
 Small yellow lines under the weather add:
 - countdowns, such as "3 dager til Nora 10 år", "4 dager til høstferie" and "14 dager til jul";
 - "Morsdag i morgen!" and "Klokka stilles tilbake en time i natt";
 - "Fint vær i helga" on a sunny Friday;
-- the dinner question from the week's school letter ("Middagsspørsmål: …") in the evening.
+- the dinner question from the week's school letter ("Middagsspørsmål: …") in the evening;
+- "Svar på Spond: Kamp lør 11:00 (Oskar)" when someone in the family has not answered a Spond invitation;
+- countdowns to your own events: put ⏳ in an event's title in Google Calendar ("⏳ Syden") and the frame counts down to it ("64 dager til Syden");
+- "Fullmåne i natt" and "Nordlys mulig i kveld (Kp 6)" (NOAA's forecast).
+
+The month column can also show **"Denne uka"**: chores that rotate weekly between the people you pick ("Oppvask: Emil · Søppel: Nora"). When the battery is below 15 %, the frame shows "Bytt batteri!".
 
 All of this can be switched off on the admin page.
 
@@ -206,6 +214,7 @@ All keys and secrets are stored in **AWS Systems Manager → Parameter Store** (
 | `LAT`, `LON` | recommended | Your location, used for the weather from [MET Norway / yr.no](https://api.met.no). |
 | `MOVAR_API_TOKEN`, `MOVAR_BASE`, `KOMMUNENR`, `MOVAR_GATENAVN`, `MOVAR_HUSNR` | optional | Waste pickup dates (Movar). Leave them out if your area is served by another company. |
 | `SPOND_EMAIL`, `SPOND_PASSWORD` | optional | Your Spond login, for [Spond](#7-sports-schedules-and-spond). The account must have a password; sign-in with Google or Apple alone won't work. |
+| `NTFY_TOPIC` | optional | A long random topic name for push alerts (see [Alerts](#alerts)). |
 | `OPENAI_API_KEY` | optional | Lets AI suggest icons for events that no keyword rule matches. |
 
 ### 4. The frame
@@ -235,8 +244,8 @@ Open `https://<id>.lambda-url.eu-west-1.on.aws/admin` on your phone and log in w
 
 | Tab | What you set there |
 |---|---|
-| **Status** | The picture currently on the frame; when it was made; battery level; how many events were found; one line per subscribed calendar or Spond group (found / new / changed / deleted, or the error); the last school letters read; a "Lag nytt bilde nå" button to make a new picture. |
-| **Familie** | Each person's name, letter, colour, birthday and the words that refer to them. Pets can be added as type "dyr". For children, the school grade and groups ("gruppe Sild"), which help Claude work out who a letter is about. Grades are set for a school year and move up automatically every August. |
+| **Status** | The picture currently on the frame; a preview of any date ("Forhåndsvis en dato", for example julaften or a birthday); when the frame last checked in; when it was made; battery level; how many events were found; one line per subscribed calendar or Spond group (found / new / changed / deleted, or the error); the last school letters read; a "Lag nytt bilde nå" button to make a new picture. |
+| **Familie** | Each person's name, letter, colour, birthday, name day and the words that refer to them; the weekly rota ("Ukas oppgaver") and yearly dates ("Merkedager"). Pets can be added as type "dyr". For children, the school grade and groups ("gruppe Sild"), which help Claude work out who a letter is about. Grades are set for a school year and move up automatically every August. |
 | **Regler** | Keyword rules, such as "korps" → music icon + Nora, or "middag:" → food icon. |
 | **Abonnement** | Calendar feeds (any `.ics` address), Spond groups, and a clean-up tool for events left behind by other calendar syncs. |
 | **Visning** | Layout options (see [Display options](#display-options)), birthdays and special days on or off, red public holidays (and julaften / nyttårsaften), when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
@@ -286,6 +295,16 @@ On either phone you then share the document → "Til kalenderen".
   3. Check that it works with "Test Spond nå".
 
   Cancelled or declined events are removed from the calendar at the next sync. This fixes the main problem with Spond's own calendar export, which leaves cancelled events behind. Spond has no official API, so this uses the same endpoints as Spond's app and could stop working if Spond changes them.
+
+### 8. Alerts
+
+A small function checks the frame every day at 12:00. If it has not fetched a picture for more than 26 hours (flat battery, Wi-Fi gone), or the battery it reported is below 15 %, you get a push notification on your phone:
+
+1. Install the free **ntfy** app ([ntfy.sh](https://ntfy.sh), iPhone and Android).
+2. Subscribe to a topic with a long random name, for example the output of `openssl rand -hex 12`. Anyone who knows the name can read the alerts, so treat it like a password.
+3. Store the same name in Parameter Store as `/weekcalendar/NTFY_TOPIC`.
+
+Each problem is reported once; the battery reminder at most every three days.
 
 ---
 

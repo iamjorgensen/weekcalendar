@@ -113,6 +113,9 @@ def validate(cfg):
                 raise ConfigError(f"Ugyldig bursdag for {name} (bruk ÅÅÅÅ-MM-DD)")
             if bd > datetime.date.today():
                 raise ConfigError(f"Bursdagen til {name} er i framtida")
+        nameday = _s(p.get("nameday"), 5)
+        if nameday and not re.fullmatch(r"(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])", nameday):
+            raise ConfigError(f"Ugyldig navnedag for {name} (bruk MM-DD)")
         people.append({
             "name": name,
             "letter": (_s(p.get("letter"), 2) or name[0]).upper(),
@@ -122,6 +125,7 @@ def validate(cfg):
             "groups": [g for g in (_s(x, 40) for x in p.get("groups") or []) if g],
             "words": [w for w in (_s(x, 60) for x in p.get("words") or []) if w],
             "birthday": birthday,
+            "nameday": nameday,
             "celebrate": p.get("celebrate", True) is not False,
         })
     out["people"] = people
@@ -187,6 +191,35 @@ def validate(cfg):
         days = int(v.get("days", DEFAULT_VIEW["days"]))
     except (TypeError, ValueError):
         raise ConfigError("Ugyldig visningsinnstilling")
+    chores = []
+    for c in cfg.get("chores") or []:
+        task = _s(c.get("task"), 30)
+        who = [n for n in (_s(x, 40) for x in c.get("people") or []) if n]
+        if not task or not who:
+            continue
+        for n in who:
+            if n.lower() not in names:
+                raise ConfigError(f"Oppgaven «{task}» har {n}, som ikke finnes i Familie")
+        chores.append({"task": task, "people": who, "on": c.get("on", True) is not False})
+    out["chores"] = chores
+
+    dates = []
+    for x in cfg.get("dates") or []:
+        dname = _s(x.get("name"), 40)
+        dd = _s(x.get("date"), 10)
+        if not dname or not dd:
+            continue
+        try:
+            datetime.date.fromisoformat(dd)
+        except ValueError:
+            raise ConfigError(f"Ugyldig dato for «{dname}» (bruk ÅÅÅÅ-MM-DD)")
+        color = (_s(x.get("color")) or "RED").upper()
+        icon = _s(x.get("icon"), 40) or "heart"
+        if color not in COLORS or not re.fullmatch(r"[a-z0-9_-]+", icon):
+            raise ConfigError(f"Ugyldig farge eller ikon for «{dname}»")
+        dates.append({"name": dname, "date": dd, "color": color, "icon": icon})
+    out["dates"] = dates
+
     out["view"] = {
         "options": [o for o in v.get("options", DEFAULT_VIEW["options"]) if o in VIEW_OPTIONS],
         "evening_hour": min(23, max(12, hour)),
@@ -309,10 +342,26 @@ def event_mappings(cfg):
 
 
 def people_for_design(cfg):
-    """What the frame design needs to celebrate birthdays."""
+    """What the frame design needs to celebrate birthdays and name days."""
     return [{"name": p["name"], "letter": p["letter"], "color": p["color"], "kind": p.get("kind", ""),
-             "birthday": p.get("birthday", ""), "celebrate": p.get("celebrate", True)}
+             "birthday": p.get("birthday", ""), "nameday": p.get("nameday", ""),
+             "celebrate": p.get("celebrate", True)}
             for p in cfg.get("people", [])]
+
+
+def chores_for_week(cfg, today):
+    """This week's rota: [{task, name, letter, color}]. Rotates every ISO week."""
+    people = {p["name"].lower(): p for p in cfg.get("people", [])}
+    week = today.isocalendar()[1]
+    out = []
+    for c in cfg.get("chores", []):
+        if not c.get("on", True) or not c.get("people"):
+            continue
+        name = c["people"][week % len(c["people"])]
+        p = people.get(name.lower(), {})
+        out.append({"task": c["task"], "name": name, "letter": p.get("letter", name[:1]),
+                    "color": p.get("color", "BLACK")})
+    return out
 
 
 def feeds_spec(cfg):

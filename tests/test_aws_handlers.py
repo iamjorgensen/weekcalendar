@@ -599,3 +599,26 @@ def test_render_uses_code_holidays_instead_of_google_stream(aws, monkeypatch, of
     config_store.save(s3, BUCKET, {"people": [{"name": "Nora"}], "view": {"holidays": {"on": False}}})
     render_handler.handler({"source": "test"}, None)
     assert data_provider.fetch_google_holiday_events is data_provider._google_holidays
+
+
+def test_preview_renders_a_date_without_touching_the_frame_image(aws, monkeypatch, offline, fresh_app, tmp_path):
+    import base64
+    import config_store
+    s3, ssm = aws
+    _put_params(ssm, {"API_KEY_GOOGLE": "k", "CALENDAR_ID": "c@example.com"})
+    seen = {}
+
+    def fake_fetch(days=7, **kwargs):
+        seen["days"] = days
+        return _sample_data()
+
+    _prepare_render(aws, monkeypatch, fake_fetch)
+    config_store.save(s3, BUCKET, {"people": [{"name": "Nora", "birthday": "2016-12-24"}], "view": {"days": 7}})
+    today = render_handler._oslo_today()
+    target = date.fromordinal(today.toordinal() + 10)
+    out = render_handler.handler({"action": "preview", "date": target.isoformat(), "time": "07:00"}, None)
+    png = Image.open(io.BytesIO(base64.b64decode(out["png"])))
+    assert png.size == (800, 480) and out["date"] == target.isoformat()
+    assert seen["days"] == 7 + 10                                     # fetched far enough ahead
+    keys = [o["Key"] for o in s3.list_objects_v2(Bucket=BUCKET).get("Contents", [])]
+    assert "latest/output.png" not in keys and "cache/season.json" not in keys

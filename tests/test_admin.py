@@ -36,7 +36,7 @@ def test_bootstrap_from_sheet_and_ssm():
     assert names == ["Amalie", "Sigrid", "Peter"]
     amalie = cfg["people"][0]
     assert amalie == {"name": "Amalie", "letter": "A", "color": "YELLOW", "kind": "barn", "grade": 6,
-                      "groups": [], "words": ["amalie", "a:"], "birthday": "", "celebrate": True}
+                      "groups": [], "words": ["amalie", "a:"], "birthday": "", "nameday": "", "celebrate": True}
     rules = {r["word"]: r for r in cfg["rules"]}
     assert rules["Movar:"] == {"word": "Movar:", "icon": "trash", "tag": "", "remove": True}
     assert rules["JR IK"]["tag"] == "Peter" and rules["JR IK"]["remove"] is False
