@@ -199,7 +199,8 @@ def test_render_handler_loads_params_renders_and_uploads(aws, monkeypatch, offli
     assert meta["event_count"] == 3
     assert meta["trigger"] == "test"
     assert meta["errors"] == []
-    assert "OPENAI_API_KEY" in meta["missing_params"]
+    assert "OPENAI_API_KEY" not in meta["missing_params"]          # optional: never reported
+    assert "MOVAR_API_TOKEN" in meta["missing_params"]
     assert "API_KEY_GOOGLE" not in meta["missing_params"]
     assert "rendered_at" in meta
 
@@ -225,7 +226,7 @@ def test_render_handler_survives_fetch_failure(aws, monkeypatch, offline, fresh_
     meta = json.loads(s3.get_object(Bucket=BUCKET, Key="latest/meta.json")["Body"].read())
     assert meta["event_count"] == 0
     assert any("calendar API down" in e for e in meta["errors"])
-    assert set(aws_common.DATA_PARAM_NAMES) <= set(meta["missing_params"])
+    assert set(aws_common.DATA_PARAM_NAMES) - render_handler.OPTIONAL_PARAMS <= set(meta["missing_params"])
     png = Image.open(io.BytesIO(s3.get_object(Bucket=BUCKET, Key="latest/output.png")["Body"].read()))
     assert png.size == (800, 480)
 

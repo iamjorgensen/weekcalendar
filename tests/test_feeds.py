@@ -213,3 +213,29 @@ def test_similar_title_at_other_time_is_not_a_duplicate():
     manual = [{"summary": "Trening", "start": {"dateTime": "2026-11-20T17:00:00+01:00"}}]
     s = Session(manual=manual)
     assert feeds.sync_events(s, "cal", [dict(ev)], ["Peter"], "spond-G1", TODAY)["skipped"] == 1
+
+
+def test_paced_session_spaces_writes_and_retries_rate_limits():
+    from school.calendar_sync import PacedSession
+
+    class R:
+        def __init__(self, code, text=""):
+            self.status_code, self.text = code, text
+
+    answers = [R(403, '{"reason": "rateLimitExceeded"}'), R(429), R(200)]
+    calls, sleeps, t = [], [], [0.0]
+
+    def post(*a, **kw):
+        calls.append(a)
+        return answers.pop(0)
+
+    class S:
+        pass
+    raw = S()
+    raw.post = post
+    raw.get = lambda *a, **kw: R(200)
+    ps = PacedSession(raw, sleep=lambda s: (sleeps.append(s), t.__setitem__(0, t[0] + s)), clock=lambda: t[0])
+    assert ps.post("url", json={}).status_code == 200 and len(calls) == 3
+    assert sleeps[:1] == [1.0] and 2.0 in sleeps                # backed off before each retry
+    raw.post = lambda *a, **kw: R(403, "forbidden")             # a real 403 is not retried
+    assert ps.post("url").status_code == 403

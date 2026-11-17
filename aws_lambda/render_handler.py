@@ -56,6 +56,9 @@ def configure_paths():
         os.makedirs(d, exist_ok=True)
 
 
+OPTIONAL_PARAMS = {"OPENAI_API_KEY", "MOVAR_GATENAVN", "MOVAR_HUSNR", "HOLIDAYS_CALENDAR_ID"}   # not shown as missing
+
+
 def load_config():
     configure_paths()
     return aws_common.load_params_into_env(aws_common.DATA_PARAM_NAMES)
@@ -347,7 +350,7 @@ def handler(event, context):
     days = int(os.environ.get("RENDER_DAYS", "7"))
     errors = []
 
-    missing = load_config()
+    missing = [m for m in load_config() if m not in OPTIONAL_PARAMS]
     s3 = aws_common.client("s3")
     known_icons = restore_caches(s3, bucket)
 

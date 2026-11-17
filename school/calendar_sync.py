@@ -17,7 +17,48 @@ def session_from_service_account(info: dict):
     from google.auth.transport.requests import AuthorizedSession
     from google.oauth2 import service_account
     creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    return AuthorizedSession(creds)
+    return PacedSession(AuthorizedSession(creds))
+
+
+class PacedSession:
+    """
+    Google Calendar allows only a few writes per second per calendar. Space writes out
+    and, when Google answers 403/429 'rate limit exceeded', wait and try again.
+    """
+    MIN_INTERVAL = 0.25            # seconds between writes
+    BACKOFF = (1.0, 2.0, 4.0)      # waits before each retry
+
+    def __init__(self, session, sleep=None, clock=None):
+        import time
+        self._s, self._sleep, self._clock, self._last = session, sleep or time.sleep, clock or time.monotonic, None
+
+    def get(self, *a, **kw):
+        return self._s.get(*a, **kw)
+
+    def post(self, *a, **kw):
+        return self._write(self._s.post, *a, **kw)
+
+    def patch(self, *a, **kw):
+        return self._write(self._s.patch, *a, **kw)
+
+    def delete(self, *a, **kw):
+        return self._write(self._s.delete, *a, **kw)
+
+    @staticmethod
+    def _rate_limited(resp):
+        return resp.status_code == 429 or (resp.status_code == 403 and "ateLimitExceeded" in (resp.text or ""))
+
+    def _write(self, fn, *a, **kw):
+        for wait in self.BACKOFF + (None,):
+            gap = 0 if self._last is None else self.MIN_INTERVAL - (self._clock() - self._last)
+            if gap > 0:
+                self._sleep(gap)
+            resp = fn(*a, **kw)
+            self._last = self._clock()
+            if wait is None or not self._rate_limited(resp):
+                return resp
+            self._sleep(wait)
+        return resp
 
 
 def _url(calendar_id, suffix=""):
