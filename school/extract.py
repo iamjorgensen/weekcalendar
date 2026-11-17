@@ -35,6 +35,8 @@ SCHEMA = {
                                 "description": "Weekday within the letter's week, or '' when 'date' is given"},
                     "date": {"type": "string", "description": "YYYY-MM-DD if the letter gives an explicit date "
                                                               "(e.g. for something outside the week), else ''"},
+                    "end_date": {"type": "string", "description": "YYYY-MM-DD last day when this is a period "
+                                                                  "over several days (ferie, uke 40), else ''"},
                     "start": {"type": "string", "description": "HH:MM, or '' for all-day"},
                     "end": {"type": "string", "description": "HH:MM, or ''"},
                     "kind": {"type": "string", "enum": KINDS},
@@ -49,7 +51,7 @@ SCHEMA = {
                                             "description": "true if the same thing on the same day is already "
                                                            "in the family calendar list (even if worded differently)"},
                 },
-                "required": ["weekday", "date", "start", "end", "kind", "title", "bring", "details",
+                "required": ["weekday", "date", "end_date", "start", "end", "kind", "title", "bring", "details",
                              "for", "already_in_calendar"],
                 "additionalProperties": False,
             },
@@ -78,6 +80,7 @@ Ikke ta med: fagbeskrivelser, læringsmål, ordbank, sosiale mål, grønne tips,
 
 Regler:
 - Én post per dag og aktivitet. Slå sammen det som hører sammen (tur + utstyr blir én post med utstyret i "bring").
+- En periode over flere dager - ferie, "uke 40 (28.09-02.10)", "fri 21.12-01.01" - blir ÉN post med "date" = første dag og "end_date" = siste dag (heldags). Ta med alle slike perioder i dokumentet, også i skoleruter med mange datoer.
 - Titler korte og konkrete på norsk, maks ~45 tegn, uten barnenes navn (det legges på automatisk). Klokkeslett i start/end når dokumentet oppgir det.
 - Ukebrev: bruk "weekday" for dager i uka. Står det en egen dato (f.eks. "foreldremøte torsdag 3. desember kl. 18"), bruk "date" = YYYY-MM-DD.
 - Andre dokumenter: bruk alltid "date" = YYYY-MM-DD og "weekday" = "". Mangler årstall, velg første dato fra og med i dag.
@@ -252,8 +255,17 @@ def to_calendar_items(result: dict, today: date, default_for=None):
         if bring:
             title = f"{title} – husk {', '.join(bring)}"
         who = [n for n in (it.get("for") or []) if n] or list(default_for or [])
+        end_date = None
+        if it.get("end_date"):
+            try:
+                end_date = date.fromisoformat(it["end_date"])
+            except ValueError:
+                end_date = None
+            if end_date is not None and not (d < end_date <= d + timedelta(days=80)):
+                end_date = None
         items.append({
             "date": d,
+            "end_date": end_date,
             "start": (it.get("start") or "").strip(),
             "end": (it.get("end") or "").strip(),
             "title": title,

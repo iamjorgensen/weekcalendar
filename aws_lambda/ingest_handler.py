@@ -147,9 +147,11 @@ def handler(event, context):
     for i in items:
         i["for"] = [n for n in i["for"] if n in known]
 
-    past = [i for i in items if i["date"] < today]
-    skipped = [i for i in items if i["date"] >= today and i.get("already_in_calendar")]
-    new = [i for i in items if i["date"] >= today and not i.get("already_in_calendar")]
+    def last_day(i):   # a period (ferie) counts until its last day
+        return i.get("end_date") or i["date"]
+    past = [i for i in items if last_day(i) < today]
+    skipped = [i for i in items if last_day(i) >= today and i.get("already_in_calendar")]
+    new = [i for i in items if last_day(i) >= today and not i.get("already_in_calendar")]
 
     scope = None
     if doc_key:

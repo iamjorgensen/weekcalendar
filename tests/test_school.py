@@ -255,3 +255,22 @@ def test_model_fallback_when_unavailable():
     out = extract.call_model(fake, b"%PDF-1.7", "application/pdf", TODAY)
     assert out["week"] == 47
     assert [r["model"] for r in fake.requests] == ["anthropic.claude-opus-5-5", "anthropic.claude-opus-4-8"]
+
+
+def test_period_becomes_one_all_day_event():
+    from datetime import date
+    from school import calendar_sync, extract
+    result = {"doc_type": "other", "week": 0, "year": 0, "grade": 0, "week_reminders": [], "dinner_question": "",
+              "items": [{"weekday": "", "date": "2026-12-21", "end_date": "2027-01-01", "start": "", "end": "",
+                         "kind": "closed", "title": "Juleferie", "bring": [], "details": "", "for": ["Sigrid"],
+                         "already_in_calendar": False},
+                        {"weekday": "", "date": "2026-11-20", "end_date": "2026-11-20", "start": "", "end": "",
+                         "kind": "closed", "title": "Planleggingsdag", "bring": [], "details": "", "for": [],
+                         "already_in_calendar": False}]}
+    _key, items = extract.to_calendar_items(result, date(2026, 11, 17))
+    jul = items[0]
+    assert jul["end_date"] == date(2027, 1, 1) and items[1]["end_date"] is None   # same day: no period
+    body = calendar_sync.event_body(jul)
+    assert body["start"] == {"date": "2026-12-21"} and body["end"] == {"date": "2027-01-02"}   # end is exclusive
+    assert body["extendedProperties"]["private"]["kind"] == "closed"
+    assert "end_date" in extract.SCHEMA["properties"]["items"]["items"]["required"]

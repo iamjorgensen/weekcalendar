@@ -104,7 +104,7 @@ def event_body(item, scope=None):
         body["end"] = {"dateTime": en.isoformat(), "timeZone": TZ}
     else:
         body["start"] = {"date": d.isoformat()}
-        body["end"] = {"date": (d + timedelta(days=1)).isoformat()}
+        body["end"] = {"date": ((item.get("end_date") or d) + timedelta(days=1)).isoformat()}   # exclusive
     return body
 
 
