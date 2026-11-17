@@ -187,6 +187,19 @@ def test_energy_block_in_evening_and_car_in_corner():
     assert YELLOW in [eve.getpixel((x, 466)) for x in range(86, 104)]   # ⚡ next to the frame battery
 
 
+def test_evening_can_keep_upcoming_instead_of_energy():
+    import tibber
+    from designs.common import BLUE
+    today = date(2026, 11, 17)
+    energy = tibber.summary(tibber.daily(_tibber_data(today)), today)
+    data = {"today": today, "updated": "18:05", "battery": 80, "energy": energy, "now": datetime(2026, 11, 17, 18, 5),
+            "days": [day(date(2026, 11, 17 + i)) for i in range(0, 6)]}
+    opts = {"month_column": True, "upcoming": True, "evening": True}
+    count = lambda im: sum(1 for x in range(551, 795) for y in range(300, 476) if im.getpixel((x, y)) == BLUE)
+    assert count(dense.render(data, opts)) > 200
+    assert count(dense.render(data, dict(opts, evening_upcoming=True))) == 0
+
+
 def test_tibber_admin_test_endpoint(aws, monkeypatch):
     import tibber
     from test_admin import ADMIN, _api
