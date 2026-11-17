@@ -47,7 +47,7 @@ Parameters:
     Description: Layout of the calendar image (legacy = the original Pi layout).
   DesignOptions:
     Type: String
-    Default: "collapse+month+tomorrow+evening+advice"
+    Default: "collapse+month_column+upcoming+tomorrow+evening+advice"
     Description: >
       Extras for the dense design, '+'-separated: collapse (repeated all-day events
       once), month (mini calendar), tomorrow ("I morgen"), evening (after 17:00 the big

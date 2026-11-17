@@ -30,7 +30,8 @@ COLORS = ["BLACK", "RED", "GREEN", "BLUE", "YELLOW"]
 KINDS = ["barn", "voksen", ""]
 VIEW_OPTIONS = ["collapse", "month", "month_right", "month_column", "husk", "upcoming", "weather5",
                 "tomorrow", "evening", "advice", "morning"]
-DEFAULT_VIEW = {"options": ["collapse", "month", "tomorrow", "evening", "advice"], "evening_hour": 17, "days": 14}
+DEFAULT_VIEW = {"options": ["collapse", "month_column", "upcoming", "tomorrow", "evening", "advice"],
+                "evening_hour": 17, "days": 14}
 
 SHEET_CSV_URL = ("https://docs.google.com/spreadsheets/d/e/2PACX-1vTYL3NSfO_r0l9HItyeakQjkqC00XVTgoXrmHgGcSS3HAT_"
                  "cGGkPmCMibmVKizL33m585mmlHVV0rOV/pub?output=csv")
