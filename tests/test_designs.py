@@ -168,3 +168,18 @@ def test_tomorrow_block_only_when_all_events_fit(monkeypatch):
                         lambda img, draw, x, y, w, day, measure=False, morning=False: (shown.append(day["date"]), 40)[1])
     dense.render(dd, {"tomorrow": True})
     assert dd["days"][1]["date"] in shown   # too many to fit -> tomorrow stays in the day list
+
+
+def test_evening_mode_keeps_tonight(monkeypatch):
+    from designs import dense
+    evening = datetime(2026, 11, 17, 18, 5, tzinfo=OSLO)
+    data = _data()
+    data["events"].append(dict(date=evening.date().isoformat(), time="20:45", name="Danmark – Norge Christian",
+                               display_text="Danmark – Norge", tags=[{"text": "Christian", "color_rgb": (0, 0, 0)}]))
+    dd = to_design_data(data, days=7, now=evening)
+    sections = []
+    monkeypatch.setattr(dense, "_day_section",
+                        lambda img, draw, x, y, w, day, measure=False, morning=False: (sections.append(day), 40)[1])
+    dense.render(dd, {"evening": True})
+    first = sections[0]
+    assert first.get("label") == "I kveld" and [e["title"] for e in first["events"]] == ["Danmark – Norge"]

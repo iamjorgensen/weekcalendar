@@ -202,7 +202,7 @@ def _day_section(img, draw, x, y, w, day, measure=False, morning=False):
     if measure:
         return total
 
-    label = f"{WEEKDAYS_SHORT[d.weekday()]} {d.day}. {MONTHS_SHORT[d.month - 1]}"
+    label = day.get("label") or f"{WEEKDAYS_SHORT[d.weekday()]} {d.day}. {MONTHS_SHORT[d.month - 1]}"
     draw_text_top(draw, (x, y + 2), label, fh, col)
     cy_mid = y + 2 + cap_height(draw, fh) // 2
 
@@ -387,10 +387,16 @@ def render(data, opts=None):
 
     # Evening mode: after EVENING_HOUR the big panel shows tomorrow
     evening = False
+    tonight = None
     now = data.get("now")
     if opts.get("evening") and now is not None and len(days) > 1:
         if now.hour >= int(os.environ.get("EVENING_HOUR", "17")):
             evening = True
+            # what's left of today (timed events from now on) stays visible as "I kveld"
+            left = [e for e in days[0]["events"]
+                    if (e.get("sort_time") or e.get("time")) and (e.get("sort_time") or e.get("time")) >= now.strftime("%H:%M")]
+            if left:
+                tonight = dict(days[0], events=left, label="I kveld", weather=None)
             days = days[1:]
             days[0] = dict(days[0], heading="I morgen")
 
@@ -416,6 +422,9 @@ def render(data, opts=None):
         if _tomorrow(img, draw, days[1], y_end, H - 26 - reserve,
                      label="Overmorgen" if evening else "I morgen"):
             list_days = days[2:]
+
+    if tonight is not None:
+        list_days = [tonight] + list_days
 
     gap = 12
     left = HERO_W + gap

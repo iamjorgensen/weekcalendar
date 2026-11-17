@@ -87,12 +87,54 @@ def _parse_dt(value, params):
     return dt, False
 
 
+# English country names in sports feeds -> Norwegian
+COUNTRIES = {
+    "Norway": "Norge", "Denmark": "Danmark", "Sweden": "Sverige", "Finland": "Finland", "Iceland": "Island",
+    "Italy": "Italia", "Spain": "Spania", "Germany": "Tyskland", "France": "Frankrike", "England": "England",
+    "Scotland": "Skottland", "Wales": "Wales", "Northern Ireland": "Nord-Irland", "Ireland": "Irland",
+    "Netherlands": "Nederland", "Belgium": "Belgia", "Switzerland": "Sveits", "Austria": "Østerrike",
+    "Poland": "Polen", "Czechia": "Tsjekkia", "Czech Republic": "Tsjekkia", "Slovakia": "Slovakia",
+    "Hungary": "Ungarn", "Croatia": "Kroatia", "Serbia": "Serbia", "Slovenia": "Slovenia", "Greece": "Hellas",
+    "Turkey": "Tyrkia", "Türkiye": "Tyrkia", "Portugal": "Portugal", "Romania": "Romania", "Ukraine": "Ukraina",
+    "Russia": "Russland", "Estonia": "Estland", "Latvia": "Latvia", "Lithuania": "Litauen", "Moldova": "Moldova",
+    "Israel": "Israel", "Cyprus": "Kypros", "Georgia": "Georgia", "Armenia": "Armenia", "Albania": "Albania",
+    "Kosovo": "Kosovo", "North Macedonia": "Nord-Makedonia", "Montenegro": "Montenegro", "Bosnia and Herzegovina":
+    "Bosnia-Hercegovina", "Luxembourg": "Luxembourg", "Faroe Islands": "Færøyene", "Malta": "Malta",
+    "USA": "USA", "United States": "USA", "Canada": "Canada", "Mexico": "Mexico", "Brazil": "Brasil",
+    "Argentina": "Argentina", "Japan": "Japan", "South Korea": "Sør-Korea", "Morocco": "Marokko",
+    "Egypt": "Egypt", "Australia": "Australia",
+}
+_COUNTRY_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, COUNTRIES), key=len, reverse=True)) + r")\b")
+
+
+def clean_title(text):
+    """Drop emoji / flags (no glyphs on the e-ink fonts), translate country names, tidy spaces."""
+    out = []
+    for ch in text or "":
+        o = ord(ch)
+        if o > 0xFFFF or 0x2600 <= o <= 0x27BF or 0xFE00 <= o <= 0xFE0F or o == 0x200D:
+            continue
+        out.append(ch)
+    t = _COUNTRY_RE.sub(lambda m: COUNTRIES[m.group(1)], "".join(out))
+    t = re.sub(r"\s+-\s+", " – ", t)
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
 def parse_ics(text):
-    """Minimal VEVENT parser: [{uid, summary, start, end, all_day, location, description}]."""
-    events, cur = [], None
+    """Minimal VEVENT parser: [{uid, summary, start, end, all_day, location, description}].
+    Properties of nested components (e.g. VALARM reminders) are ignored."""
+    events, cur, nested = [], None, 0
     for line in _unfold(text):
         if line == "BEGIN:VEVENT":
-            cur = {}
+            cur, nested = {}, 0
+            continue
+        if cur is not None and line.startswith("BEGIN:"):
+            nested += 1
+            continue
+        if cur is not None and line.startswith("END:") and line != "END:VEVENT":
+            nested = max(0, nested - 1)
+            continue
+        if nested:
             continue
         if line == "END:VEVENT":
             if cur is not None and cur.get("start") is not None and cur.get("summary"):
@@ -129,7 +171,7 @@ def _norm(s):
 
 def _event_body(ev, names, fid):
     body = {
-        "summary": title_with_names(ev["summary"], names),
+        "summary": title_with_names(clean_title(ev["summary"]), names),
         "description": "\n".join(x for x in (ev.get("description"), "Fra kalenderabonnement") if x),
         "extendedProperties": {"private": {"source": SOURCE, "feed": fid, "uid": ev["uid"][:900]}},
         "transparency": "transparent",
@@ -197,7 +239,7 @@ def sync_feed(session, calendar_id, ics_text, names, fid, today, days_ahead=365)
                        "oppdatering")
                 stats["updated"] += 1
             continue
-        title = _norm(ev["summary"])
+        title = _norm(clean_title(ev["summary"]))
         if any(title and (title in t or t in title) for t in manual.get(ev["_date"], []) if len(t) >= 4):
             stats["skipped"] += 1     # the family already has it in the calendar
             continue

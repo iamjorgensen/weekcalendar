@@ -563,7 +563,7 @@ def test_render_syncs_calendar_feeds_then_throttles(aws, monkeypatch):
     first = render_handler.sync_calendar_feeds(s3, BUCKET, errors)
     assert errors == [] and fetched == ["https://ics.example.com/norway.ics"]
     assert list(first.values())[0]["created"] >= 2
-    assert any(b["summary"] == "Norge - Danmark Christian" for b in session.posted)
+    assert any(b["summary"] == "Norge – Danmark Christian" for b in session.posted)
     assert render_handler.sync_calendar_feeds(s3, BUCKET, errors) == {"skipped": "synced recently"}
     assert len(fetched) == 1
     assert render_handler.sync_calendar_feeds(s3, BUCKET, errors, force=True) is not None   # force bypasses

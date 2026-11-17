@@ -102,9 +102,9 @@ def test_sync_creates_with_names_last_and_skips_past():
     stats = feeds.sync_feed(s, "cal", ICS, ["Christian"], "f", TODAY)
     assert stats == {"created": 3, "updated": 0, "deleted": 0, "skipped": 0}
     titles = [b["summary"] for b in s.posted]
-    assert "Norge - Danmark Christian" in titles and "Italia - Norge Christian" in titles
+    assert "Norge – Danmark Christian" in titles and "Italia – Norge Christian" in titles
     assert all("Sverige" not in t for t in titles)       # September match is in the past
-    m1 = next(b for b in s.posted if b["summary"].startswith("Norge - Danmark"))
+    m1 = next(b for b in s.posted if b["summary"].startswith("Norge – Danmark"))
     assert m1["start"]["dateTime"].startswith("2026-11-17T19:45") and m1["location"] == "Ullevaal Stadion, Oslo"
     assert m1["extendedProperties"]["private"] == {"source": feeds.SOURCE, "feed": "f", "uid": "match-1@fotmob"}
     camp = next(b for b in s.posted if b["summary"].startswith("Landslagssamling"))
@@ -113,8 +113,8 @@ def test_sync_creates_with_names_last_and_skips_past():
 
 def test_sync_updates_changed_time_and_deletes_cancelled():
     ours = [
-        _ours("match-1@fotmob", "2026-11-17T18:00:00+00:00", "Norge - Danmark Christian"),   # time changed
-        _ours("match-2@fotmob", "2027-03-25T20:45:00+01:00", "Italia - Norge Christian"),
+        _ours("match-1@fotmob", "2026-11-17T18:00:00+00:00", "Norge – Danmark Christian"),   # time changed
+        _ours("match-2@fotmob", "2027-03-25T20:45:00+01:00", "Italia – Norge Christian"),
         _ours("gone@fotmob", "2027-01-10T18:00:00+00:00", "Norge - Island Christian"),        # no longer in feed
     ]
     ours[1]["end"] = {"dateTime": "2027-03-25T22:45:00+01:00"}
@@ -130,3 +130,39 @@ def test_sync_skips_what_the_family_already_added():
     s = Session(manual=manual)
     stats = feeds.sync_feed(s, "cal", ICS, ["Christian"], "f", TODAY)
     assert stats["skipped"] == 1 and stats["created"] == 2
+
+
+FOTMOB = """BEGIN:VCALENDAR\r
+BEGIN:VEVENT\r
+DESCRIPTION:https://www.fotmob.com/match/1\\nWorld Cup Qualification \r
+ UEFA\r
+DTSTART:20261117T194500Z\r
+DTEND:20261117T214500Z\r
+LOCATION:Parken\\, København\\, DEN\r
+SUMMARY:\U0001F1E9\U0001F1F0 Denmark - \U0001F1F3\U0001F1F4 Norway\r
+UID:1-8492@fotmob.com\r
+BEGIN:VALARM\r
+ACTION:DISPLAY\r
+DESCRIPTION:Denmark - Norway starting in 15 minutes\r
+SUMMARY:\U0001F1E9\U0001F1F0 Denmark - \U0001F1F3\U0001F1F4 Norway starting in 15 minutes\r
+TRIGGER:-PT15M\r
+END:VALARM\r
+END:VEVENT\r
+END:VCALENDAR\r
+"""
+
+
+def test_fotmob_feed_alarm_ignored_and_title_cleaned():
+    ev = feeds.parse_ics(FOTMOB)[0]
+    assert ev["summary"].endswith("Norway") and "starting" not in ev["summary"]
+    assert ev["description"].startswith("https://www.fotmob.com/match/1")
+    assert feeds.clean_title(ev["summary"]) == "Danmark – Norge"
+    s = Session()
+    feeds.sync_feed(s, "cal", FOTMOB, ["Christian"], "f", TODAY)
+    assert s.posted[0]["summary"] == "Danmark – Norge Christian"
+    assert s.posted[0]["start"]["dateTime"].startswith("2026-11-17T19:45")
+
+
+def test_clean_title_keeps_ordinary_text():
+    assert feeds.clean_title("Bosnia and Herzegovina - Norway (1-4)") == "Bosnia-Hercegovina – Norge (1-4)"
+    assert feeds.clean_title("Juleavslutning") == "Juleavslutning"
