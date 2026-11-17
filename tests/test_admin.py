@@ -171,3 +171,21 @@ def test_render_feeds_come_from_config(aws, monkeypatch):
     assert fetched == ["https://pub.fotmob.com/prod/pub/api/v2/calendar/team/8492.ics"]
     assert all(b["summary"].endswith(" Amalie") for b in session.posted)
     assert all(b["extendedProperties"]["private"]["icon"] == "soccer" for b in session.posted)
+
+
+def test_ai_model_from_config(aws, monkeypatch):
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "ANTHROPIC_API_KEY": "sk-ant-x"})
+    cfg = _cfg()
+    cfg["ai"] = {"model": "claude-haiku-5-5"}
+    config_store.save(s3, BUCKET, cfg)
+    s3.put_object(Bucket=BUCKET, Key="inbox/a.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
+    fake_ai = FakeAnthropic(UKE47)
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda api_key=None: fake_ai)
+    monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: FakeSession([]))
+    out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf"}, None)
+    assert out["ok"] and [r["model"] for r in fake_ai.requests] == ["claude-haiku-5-5"]
+    cfg["ai"] = {"model": "gpt-4"}
+    with pytest.raises(config_store.ConfigError, match="AI-modell"):
+        config_store.validate(cfg)
+    assert config_store.validate({"people": []})["ai"] == {"model": "claude-sonnet-5-5"}

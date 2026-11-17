@@ -30,6 +30,8 @@ COLORS = ["BLACK", "RED", "GREEN", "BLUE", "YELLOW"]
 KINDS = ["barn", "voksen", ""]
 VIEW_OPTIONS = ["collapse", "month", "month_right", "month_column", "husk", "upcoming", "weather5",
                 "tomorrow", "evening", "advice", "morning"]
+AI_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
+DEFAULT_AI = {"model": "claude-sonnet-5-5"}
 DEFAULT_VIEW = {"options": ["collapse", "month_column", "upcoming", "tomorrow", "evening", "advice"],
                 "evening_hour": 17, "days": 14}
 
@@ -144,6 +146,11 @@ def validate(cfg):
         feeds.append({"name": _s(f.get("name"), 80) or url[:60], "url": url, "tags": tags,
                       "icon": icon, "on": f.get("on", True) is not False})
     out["feeds"] = feeds
+
+    model = _s((cfg.get("ai") or {}).get("model")) or DEFAULT_AI["model"]
+    if model not in AI_MODELS:
+        raise ConfigError(f"Ukjent AI-modell: {model}")
+    out["ai"] = {"model": model}
 
     v = cfg.get("view") or {}
     try:

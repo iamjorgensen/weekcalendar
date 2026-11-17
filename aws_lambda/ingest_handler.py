@@ -125,11 +125,12 @@ def handler(event, context):
 
     try:
         api_key = params.get("ANTHROPIC_API_KEY")
+        chosen = ((cfg or {}).get("ai") or {}).get("model")   # admin page: Haiku / Sonnet / Opus
         if api_key:   # Claude API directly: plain model ids, no Bedrock fallbacks
-            models = [params.get("CLAUDE_MODEL") or DIRECT_MODEL]
-        else:         # Claude in Amazon Bedrock
-            models = ([params["CLAUDE_MODEL"]] if params.get("CLAUDE_MODEL") else [extract.MODEL]) \
-                + extract.FALLBACK_MODELS
+            models = [chosen or params.get("CLAUDE_MODEL") or DIRECT_MODEL]
+        else:         # Claude in Amazon Bedrock: same models with the "anthropic." prefix
+            first = ("anthropic." + chosen) if chosen else (params.get("CLAUDE_MODEL") or extract.MODEL)
+            models = [first] + [m for m in extract.FALLBACK_MODELS if m != first]
         result = extract.call_model(anthropic_client(api_key), data, content_type, today,
                                     existing=existing, children_now=kids_now, models=models)
         grade = int(result.get("grade") or 0)
@@ -174,7 +175,7 @@ def handler(event, context):
     logger.info("Ingest %s: %s | %s", event.get("key"), msg,
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
     _log_letter(s3, event.get("bucket"), msg, event.get("key"))
-    return {"ok": True, "message": msg, "week": doc_key, "child": letter_child,
+    return {"ok": True, "message": msg, "week": doc_key, "child": letter_child, "model": models[0],
             "created": created, "deleted": deleted, "skipped": len(skipped), "past": len(past),
             "items": [{"date": i["date"].isoformat(), "title": i["title"], "start": i["start"],
                        "for": i["for"]} for i in new]}
