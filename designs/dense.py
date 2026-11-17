@@ -51,7 +51,8 @@ def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
 
     f_day, f_num, f_mon = f_bold(26), f_bold(50), f_body(21)
     y = 14
-    draw_text_top(draw, (x0, y), WEEKDAYS[d.weekday()], f_day, accent if red else WHITE)
+    heading = day.get("heading") or WEEKDAYS[d.weekday()]
+    draw_text_top(draw, (x0, y), heading, f_day, YELLOW if day.get("heading") else (accent if red else WHITE))
     f_wk = f_tiny(15)
     wk = f"uke {d.isocalendar()[1]}"
     draw_text_top(draw, (x1 - text_w(draw, wk, f_wk), y + cap_height(draw, f_day) - cap_height(draw, f_wk)),
@@ -104,6 +105,10 @@ def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
             paste_icon(img, ic, dx, y - 3, 16, WHITE)
             draw_text_top(draw, (dx + 21, y), txt, f_det, WHITE)
         y += 20
+        if w.get("advice"):
+            f_adv = f_body(14)
+            draw_text_top(draw, (x0, y), ellipsize(draw, w["advice"], f_adv, x1 - x0), f_adv, YELLOW)
+            y += 20
 
     draw.rectangle([x0, y, x1, y + 1], fill=WHITE)
     y += 7
