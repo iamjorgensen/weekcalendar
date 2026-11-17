@@ -129,9 +129,15 @@ def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, ext
         from designs.common import wrap
         f_ln = f_body(14)
         two = text.startswith(("Middagsspørsmål", "Svar på Spond")) or "farevarsel" in text
-        for part in wrap(draw, text, f_ln, x1 - x0, 2 if two else 1):
+        chips = getattr(text, "chips", ()) or ()
+        room = x1 - x0 - 17 * len(chips)
+        for part in wrap(draw, text, f_ln, room, 2 if two else 1):
             draw_text_top(draw, (x0, y), part, f_ln, YELLOW)
             y += 19
+        cx = x1 - 17 * len(chips) + 8
+        for letter, col in chips:     # who it is for, like on the events
+            person_chip(draw, cx, y - 19 + cap_height(draw, f_ln) // 2, letter, col, 15, bg=BLACK)
+            cx += 17
         y += 1
 
     draw.rectangle([x0, y, x1, y + 1], fill=WHITE)

@@ -131,3 +131,20 @@ def test_render_handler_preview_returns_png(monkeypatch):
     monkeypatch.setattr(render_handler, "_oslo_today", lambda: date(2026, 11, 17))
     assert "error" in render_handler.handler({"action": "preview", "date": "2020-01-01"}, None)
     assert "error" in render_handler.handler({"action": "preview", "date": "nope"}, None)
+
+
+def test_countdown_tags_people():
+    people = [{"name": "Christian", "letter": "C", "color": "BLACK", "words": ["christian", "c:"]},
+              {"name": "Nora", "letter": "N", "color": "YELLOW", "words": ["nora"]}]
+    title, chips = moments.tag_people("Syden Christian", people)
+    assert title == "Syden" and chips == [("C", (0, 0, 0))]
+    out = moments.lines([day(date(2026, 11, 17))], people, now=datetime(2026, 11, 17, 7),
+                        countdowns=[{"date": "2026-11-29", "title": "Syden Christian"},
+                                    {"date": "2027-01-01", "title": "Senere"}])
+    assert out == ["12 dager til Syden"] and out[0].chips == [("C", (0, 0, 0))]
+    assert moments.tag_people("Christiania-turen", people) == ("Christiania-turen", [])   # whole words only
+    d = date(2026, 11, 17)
+    img = dense.render({"today": d, "now": datetime(2026, 11, 17, 7), "updated": "07:00", "battery": 80,
+                        "people": people, "countdowns": [{"date": "2026-11-29", "title": "Syden Christian"}],
+                        "days": [day(d)] + [day(date(2026, 11, 17 + i)) for i in range(1, 5)]}, {"moments": True})
+    assert img.size == (800, 480)

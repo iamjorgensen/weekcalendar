@@ -121,6 +121,26 @@ def _day_of(ev, d):
 
 
 # ------------------------------------------------------------------ people
+class Line(str):
+    """A text line for the black panel that can carry person chips at the end."""
+    chips = ()
+
+
+def tag_people(title, people):
+    """'Syden Christian' -> ('Syden', [chip]): names (and their words) become chips, like the calendar mapping."""
+    import re as _re
+    chips, text = [], title
+    for p in people or []:
+        words = [p["name"]] + [w.rstrip(":") for w in p.get("words") or [] if len(w.rstrip(":")) >= 3]
+        pat = _re.compile(r"(?<!\w)(" + "|".join(_re.escape(w) for w in words) + r")(?!\w)", _re.I)
+        if pat.search(text):
+            text = pat.sub(" ", text)
+            if p.get("kind") != "dyr":
+                chips.append(_chip(p))
+    text = " ".join(text.split()).strip(" -–:,")
+    return (text or title), chips
+
+
 def birthdays(people, d):
     """[(person, age or None)] with a birthday on date d (29 Feb -> 28 Feb in other years)."""
     out = []
@@ -391,7 +411,10 @@ def lines(days, people=(), now=None, dinner_question="", evening=False, max_line
         except (KeyError, ValueError):
             continue
         if n >= 1:
-            out.append(f"I morgen: {c['title']}!" if n == 1 else f"{_plural(n, 'dag', 'dager')} til {c['title']}")
+            title, chips = tag_people(c["title"], people)
+            line = Line(f"I morgen: {title}!" if n == 1 else f"{_plural(n, 'dag', 'dager')} til {title}")
+            line.chips = chips
+            out.append(line)
 
     # special days tomorrow
     sp = special_days((today + timedelta(days=1)).year).get(today + timedelta(days=1))

@@ -345,7 +345,7 @@ def people_for_design(cfg):
     """What the frame design needs to celebrate birthdays and name days."""
     return [{"name": p["name"], "letter": p["letter"], "color": p["color"], "kind": p.get("kind", ""),
              "birthday": p.get("birthday", ""), "nameday": p.get("nameday", ""),
-             "celebrate": p.get("celebrate", True)}
+             "celebrate": p.get("celebrate", True), "words": p.get("words", [])}
             for p in cfg.get("people", [])]
 
 
