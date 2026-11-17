@@ -243,6 +243,8 @@ def test_tibber_history_cached_in_s3(monkeypatch):
     calls = []
 
     def fake(token, q, timeout=10):
+        if "HOURLY" in q:          # hourly data for nettleie: covered by its own tests
+            return {"viewer": {"homes": []}}
         calls.append(q)
         end = int(q.split('before: "')[1].split('"')[0]) if "before:" in q else len(full)
         start = max(0, end - 31)
@@ -309,3 +311,94 @@ def test_energy_block_shows_year_cost_when_there_is_room():
     with_cost = dense.render(dict(base, energy=energy), opts)
     without = dense.render(dict(base, energy=dict(energy, year_cost=None)), opts)
     assert dark(with_cost) > dark(without) + 200
+
+
+# ------------------------------------------------------------------ nettleie (Elvia)
+def _hour_nodes(first_day, days, kwh=lambda d, h: 1.0):
+    from datetime import timedelta
+    out = []
+    for i in range(days):
+        d = first_day + timedelta(days=i)
+        for h in range(24):
+            out.append({"from": f"{d.isoformat()}T{h:02d}:00:00.000+01:00", "consumption": kwh(d, h)})
+    return out
+
+
+def test_elvia_tariff_periods_and_steps():
+    import nettleie
+    assert nettleie.tariff(date(2026, 3, 1))[1:3] == (0.364, 0.264)
+    assert nettleie.tariff(date(2026, 7, 1))[1:3] == (0.464, 0.314)
+    assert nettleie.capacity_fee(4.0, date(2026, 2, 1)) == 190 and nettleie.capacity_fee(5.0, date(2026, 2, 1)) == 190
+    assert nettleie.capacity_fee(7.5, date(2026, 8, 1)) == 420 and nettleie.capacity_fee(150, date(2026, 8, 1)) == 6800
+    assert nettleie.is_day_hour(date(2026, 11, 17), 6) and not nettleie.is_day_hour(date(2026, 11, 17), 22)
+    assert not nettleie.is_day_hour(date(2026, 11, 21), 12)                  # Saturday
+    assert not nettleie.is_day_hour(date(2026, 4, 2), 12)                    # Skjærtorsdag 2026
+    assert not nettleie.is_day_hour(date(2026, 5, 14), 12)                   # Kristi himmelfart 2026
+
+
+def test_tibber_grid_days_splits_day_night_and_peak():
+    import tibber
+    nodes = _hour_nodes(date(2026, 11, 16), 2, lambda d, h: 3.0 if h == 18 else 1.0)    # Mon, Tue
+    nodes += _hour_nodes(date(2026, 11, 16), 1, lambda d, h: 0.5)                       # a second home
+    g = tibber.grid_days(nodes)
+    assert g[date(2026, 11, 16)] == [16 * 1.5 + 2.0, 8 * 1.5, 3.5]       # 06-22 day, rest night, peak 18:00
+    assert date(2026, 11, 16) not in tibber.grid_days(nodes, partial_first=True)
+
+
+def test_year_cost_includes_nettleie_from_hourly_data():
+    import nettleie
+    import tibber
+    today = date(2026, 11, 17)
+    data = _tibber_data(today)
+    per_day = tibber.daily(data)
+    grid = tibber.grid_days(_hour_nodes(date(2025, 12, 17), 335, lambda d, h: 2.0))     # 48 kWh/day, peak 2 kW
+    plain = tibber.year_cost(per_day, {}, today)
+    with_grid = tibber.year_cost(per_day, {}, today, grid)
+    assert with_grid["nettleie"] and not plain["nettleie"]
+    so_far = [d for d in grid if date(2026, 1, 1) <= d < today]
+    energy = sum(nettleie.energy_cost(d, grid[d][0], grid[d][1]) for d in so_far)
+    fees = 6 * 125 + 4 * 150 + 150 * 16 / 30          # 0-2 kW step: Jan-Jun, Jul-Oct new price, Nov pro rata
+    assert with_grid["cost"] == round(plain["cost"] + energy + fees)
+    assert with_grid["estimate"] > plain["estimate"] + energy + 6 * 125 + 6 * 150
+    short = {d: v for d, v in grid.items() if d > date(2026, 6, 1)}
+    assert tibber.year_cost(per_day, {}, today, short)["nettleie"] is False   # hourly data doesn't cover the year
+
+
+def test_tibber_hourly_backfill_once_then_last_days(monkeypatch):
+    import tibber
+    from datetime import timedelta
+    today = date(2026, 11, 17)
+    daily_data = _tibber_data(today)
+    hours = _hour_nodes(date(2025, 12, 1), (today - date(2025, 12, 1)).days + 1)
+    hourly_calls = []
+
+    def fake(token, q, timeout=10):
+        if "HOURLY" not in q:
+            return daily_data
+        hourly_calls.append(q)
+        last = int(q.split("last: ")[1].split(",")[0].split(")")[0])
+        end = int(q.split('before: "')[1].split('"')[0]) if "before:" in q else len(hours)
+        start = max(0, end - last)
+        return {"viewer": {"homes": [{"id": "h1", "consumption": {
+            "pageInfo": {"startCursor": str(start), "hasPreviousPage": start > 0}, "nodes": hours[start:end]}}]}}
+    monkeypatch.setattr(tibber, "query", fake)
+    s3 = S3()
+    first = tibber.energy("t", today, s3, "b")
+    assert first["year_cost"]["nettleie"] and len(hourly_calls) == 11          # back to 1 Jan, 744 hours a page
+    hourly_calls.clear()
+    tibber.energy("t", today + timedelta(days=1), s3, "b")
+    assert len(hourly_calls) == 1 and "last: 72" in hourly_calls[0]
+    cached = json.loads(s3.get_object(Bucket="b", Key=tibber.CACHE_KEY)["Body"].read())
+    assert min(cached["grid"]) <= "2026-01-01"
+
+
+def test_energy_box_labels_nettleie():
+    import tibber
+    today = date(2026, 11, 17)
+    energy = tibber.summary(tibber.daily(_tibber_data(today)), today)
+    base = {"today": today, "updated": "18:05", "battery": 80, "now": datetime(2026, 11, 17, 18, 5),
+            "days": [day(date(2026, 11, 17 + i)) for i in range(0, 6)]}
+    opts = {"month_column": True, "upcoming": True, "evening": True}
+    a = dense.render(dict(base, energy=dict(energy, year_cost=dict(energy["year_cost"], nettleie=True))), opts)
+    b = dense.render(dict(base, energy=energy), opts)
+    assert a.crop((551, 380, 700, 400)).tobytes() != b.crop((551, 380, 700, 400)).tobytes()
