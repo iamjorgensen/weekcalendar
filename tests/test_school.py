@@ -128,6 +128,9 @@ class FakeAnthropic:
         r = type("R", (), {})()
         r.stop_reason = self.stop_reason
         r.content = [_Block(json.dumps(self.result))]
+        r.model = kw["model"]
+        r.usage = type("U", (), {"input_tokens": 10000, "output_tokens": 2000,
+                                 "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0})()
         return r
 
 
@@ -146,6 +149,15 @@ def test_call_model_request_shape():
     assert "2026-12-03 18:00 Foreldremøte 6B" in content[2]["text"]
     assert "2026-11-16" in content[3]["text"]
     assert "Husk" in req["system"]
+
+
+def test_call_model_reports_usage_and_cost():
+    out = extract.call_model(FakeAnthropic(UKE47), b"x", "text/plain", TODAY, models=["claude-sonnet-5-5"])
+    u = out["_usage"]
+    assert u == {"model": "claude-sonnet-5-5", "input_tokens": 10000, "output_tokens": 2000}
+    assert extract.estimate_usd(u) == pytest.approx(0.04)          # 10k * $2/M + 2k * $10/M
+    assert extract.estimate_usd({**u, "model": "anthropic.claude-opus-5-5"}) == pytest.approx(0.08)
+    assert extract.estimate_usd({**u, "model": "some-other-model"}) is None
 
 
 def test_call_model_refusal():

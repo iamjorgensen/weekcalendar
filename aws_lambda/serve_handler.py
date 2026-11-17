@@ -329,7 +329,8 @@ def _admin_api(path, method, event, headers):
     if path == "/api/status" and method == "GET":
         return _json(200, {"meta": _s3_json(META_KEY, {}), "feeds": _s3_json(FEEDS_STATE_KEY, {}),
                            "frame_seen": _s3_json("cache/frame_seen.json", {}),
-                           "letters": _s3_json(LETTERS_LOG_KEY, [])[-10:]})
+                           "letters": _s3_json(LETTERS_LOG_KEY, [])[-10:],
+                           "ai_usage": _s3_json("log/ai_usage.json", {})})
 
     if path == "/api/preview" and method == "GET" and (event.get("queryStringParameters") or {}).get("date"):
         q = event.get("queryStringParameters") or {}

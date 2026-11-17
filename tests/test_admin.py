@@ -126,6 +126,7 @@ def test_admin_status_preview_and_render(served, fake_lambda):
     s3.put_object(Bucket=BUCKET, Key="log/letters.json", Body=json.dumps([{"at": 1, "message": "La til 6"}]).encode())
     st = json.loads(_api("/api/status")["body"])
     assert st["meta"]["event_count"] == 3 and st["letters"][0]["message"] == "La til 6"
+    assert st["ai_usage"] == {}
     prev = _api("/api/preview")
     assert prev["statusCode"] == 200 and prev["isBase64Encoded"] and base64.b64decode(prev["body"])[:4] == b"\x89PNG"
     r = _api("/api/render", "POST")
@@ -149,6 +150,10 @@ def test_ingest_uses_config_children_groups_and_logs(aws, monkeypatch):
     assert "Sigrid (3. trinn, gruppe Sild)" in kids_text and "Gruppe Sild" in fake_ai.requests[0]["system"]
     log = json.loads(s3.get_object(Bucket=BUCKET, Key="log/letters.json")["Body"].read())
     assert log[-1]["message"] == out["message"]
+    assert log[-1]["usage"]["input_tokens"] == 10000 and log[-1]["usage"]["usd"] > 0
+    usage = json.loads(s3.get_object(Bucket=BUCKET, Key="log/ai_usage.json")["Body"].read())
+    (month,) = usage["months"].values()
+    assert month["letters"] == 1 and month["usd"] == log[-1]["usage"]["usd"]
 
 
 def test_render_feeds_come_from_config(aws, monkeypatch):
