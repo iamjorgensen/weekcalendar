@@ -255,3 +255,57 @@ def test_tibber_history_cached_in_s3(monkeypatch):
     calls.clear()
     again = tibber.energy("t", today + timedelta(days=1), s3, "b")
     assert len(calls) == 1 and again["kwh"] > 0                                            # newest page only
+
+
+def _with_cost(data, price=1.1):
+    for n in data["viewer"]["homes"][0]["consumption"]["nodes"]:
+        n["cost"] = n["consumption"] * price
+    return data
+
+
+def test_tibber_year_cost_and_estimate_with_norgespris():
+    import tibber
+    today = date(2026, 11, 17)
+    data = _with_cost(_tibber_data(today))
+    s = tibber.summary(tibber.daily(data), today, per_day_cost=tibber.daily_cost(data))
+    # 1 Jan - 16 Nov: 290 days at 50 kWh + 30 at 40 kWh, Norgespris 0.50 kr/kWh (spot cost is ignored)
+    assert s["year_cost"]["cost"] == round((290 * 50 + 30 * 40) * 0.5)
+    # rest of the year (17 Nov - 31 Dec, 45 days): last year's 50 kWh/day
+    assert s["year_cost"]["estimate"] == round(s["year_cost"]["cost"] + 45 * 50 * 0.5)
+    assert tibber.summary(tibber.daily(data), today)["year_cost"]["cost"] == s["year_cost"]["cost"]
+    short = {d: v for d, v in tibber.daily(data).items() if d > date(2026, 6, 1)}
+    assert tibber.year_cost(short, {}, today) is None                     # history doesn't reach 1 Jan
+
+
+def test_norgespris_cap_uses_spot_above_5000_kwh():
+    import tibber
+    assert tibber._month_cost(6000, 2026, 1.2) == 5000 * 0.5 + 1000 * 1.2
+    assert tibber._month_cost(400, 2027, None) == 400 * 0.5               # unknown year: latest known price
+
+
+def test_tibber_old_cache_without_cost_is_refetched(monkeypatch):
+    import tibber
+    today = date(2026, 11, 17)
+    s3 = S3()
+    s3.put_object(Bucket="b", Key=tibber.CACHE_KEY, Body=json.dumps(
+        {"complete": True, "days": {"2026-11-16": 40.0}}).encode())
+    fetched = []
+    monkeypatch.setattr(tibber, "fetch_history",
+                        lambda token, max_pages=tibber.MAX_PAGES: (fetched.append(max_pages), _with_cost(_tibber_data(today)))[1])
+    out = tibber.energy("t", today, s3, "b")
+    assert fetched == [tibber.MAX_PAGES] and out["year_cost"]["estimate"]
+    assert json.loads(s3.get_object(Bucket="b", Key=tibber.CACHE_KEY)["Body"].read())["cost"]
+
+
+def test_energy_block_shows_year_cost_when_there_is_room():
+    import tibber
+    today = date(2026, 11, 17)
+    data = _with_cost(_tibber_data(today))
+    energy = tibber.summary(tibber.daily(data), today, per_day_cost=tibber.daily_cost(data))
+    base = {"today": today, "updated": "18:05", "battery": 80, "now": datetime(2026, 11, 17, 18, 5),
+            "days": [day(date(2026, 11, 17 + i)) for i in range(0, 6)]}
+    opts = {"month_column": True, "upcoming": True, "evening": True}
+    dark = lambda im: sum(1 for x in range(551, 795) for y in range(370, 410) if im.getpixel((x, y)) == (0, 0, 0))
+    with_cost = dense.render(dict(base, energy=energy), opts)
+    without = dense.render(dict(base, energy=dict(energy, year_cost=None)), opts)
+    assert dark(with_cost) > dark(without) + 200
