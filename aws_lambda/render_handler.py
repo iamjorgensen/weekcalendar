@@ -231,9 +231,11 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
             r = requests.get(url, timeout=15, headers={"User-Agent": "weekcalendar/1.0"})
             r.raise_for_status()
             result[fid] = feeds.sync_feed(session, params["CALENDAR_ID"], r.text, names, fid, today, icon=icon)
+            result[fid]["name"] = url.split("//", 1)[-1].split("/", 1)[0]
         except Exception as e:
             logger.exception("Feed sync failed for %s", fid)
             errors.append(f"feed {fid}: {e}")
+            result[fid] = {"name": url.split("//", 1)[-1].split("/", 1)[0], "error": str(e)[:300]}
     if spond_groups:
         import spond_client
         try:
@@ -246,11 +248,14 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
                     evs = spond_client.to_feed_events(spond_client.events(token, g["id"]))
                     result[fid] = feeds.sync_events(session, params["CALENDAR_ID"], evs, g.get("tags", []), fid,
                                                     today, days_ahead=90, icon=g.get("icon", ""))
+                    result[fid].update({"name": "Spond: " + (g.get("name") or ""), "found": len(evs)})
                 except Exception as e:
                     logger.exception("Spond group sync failed")
                     errors.append(f"spond {g.get('name')}: {e}")
+                    result[fid] = {"name": "Spond: " + (g.get("name") or ""), "error": str(e)[:300]}
         except Exception as e:
             errors.append(f"spond: {e}")
+            result["spond"] = {"name": "Spond", "error": str(e)[:300]}
     try:
         s3.put_object(Bucket=bucket, Key=FEEDS_STATE_KEY,
                       Body=json.dumps({"at": time.time(), "spec": spec_hash, "result": result}).encode("utf-8"))

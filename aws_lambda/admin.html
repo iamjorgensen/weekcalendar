@@ -286,6 +286,10 @@ async function loadStatus() {
       <div class="row space"><span>Sist laget</span><span class="muted">${esc(when)} · ${esc(m.trigger || "")}</span></div>
       <div class="row space"><span>Været</span><span class="muted">${esc(m.weather_days ?? "–")} dager</span></div>
       <div class="row space"><span>Abonnement synket</span><span class="muted">${esc(feeds)}</span></div>
+      ${Object.values((j.feeds && j.feeds.result) || {}).filter((f) => f && f.name).map((f) => `
+        <div class="row space small"><span style="padding-left:10px">${esc(f.name)}</span><span class="muted">${f.error
+          ? `<span style="color:#c62828">feil: ${esc(f.error)}</span>`
+          : esc(`${f.found != null ? f.found + " funnet · " : ""}${f.created} nye · ${f.updated} endret · ${f.deleted} slettet${f.skipped ? " · " + f.skipped + " fantes" : ""}`)}</span></div>`).join("")}
       ${(m.missing_params || []).length ? `<div class="row space"><span>Mangler</span><span class="muted">${(m.missing_params || []).map(esc).join(", ")}</span></div>` : ""}
       ${errs}`;
     const L = j.letters || [];
