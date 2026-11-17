@@ -238,6 +238,8 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
             "icon": ev.get("icon") or None,
             "people": people_from_tags(ev.get("tags")),
             "is_holiday": _is_holiday(ev),
+            "span": ev.get("span") or "",     # "YYYY-MM-DD/YYYY-MM-DD" for a multi-day all-day event
+            "feed": ev.get("feed") or "",     # set when a calendar feed / Spond wrote the event
         })
 
     weather_by_date = {}
@@ -278,4 +280,5 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
     battery = data.get("battery")
     if not isinstance(battery, int) or not 0 <= battery <= 100:
         battery = None
-    return {"today": today, "now": now, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery}
+    return {"today": today, "now": now, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery,
+            "people": data.get("people") or [], "dinner_question": data.get("dinner_question") or ""}

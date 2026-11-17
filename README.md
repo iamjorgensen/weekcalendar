@@ -55,9 +55,37 @@ After 17:00 the big panel switches to **tomorrow** ("I morgen"), with tomorrow's
 - **Shortened repeats:** an all-day event that repeats is shown once, as "Juleverksted (tir–fre)", instead of on every day.
 - **Days off:** these get a beach umbrella icon and a red date. Public holidays come from Google's holiday calendar; school holidays come from the school calendar you send in (see [school letters](#6-send-school-letters-from-your-phone)).
 - **Battery level:** shown in the corner. The frame measures it and sends it along with its next request.
+- **Birthdays and special days:** see below.
 - **Layouts:** different layouts can be chosen on the admin page. For example, here the month calendar is replaced by more days:
 
 ![Two columns of days instead of the month calendar](docs/images/frame-month-right.png)
+
+**Birthdays and special days**
+
+On a birthday the top of the black panel becomes a tall banner in that person's colour, with flags, confetti, the age and a cake (or a dog for the dog). Someone whose colour is black gets gold text and a rainbow edge. Holidays get their own themes:
+
+![Birthday and holiday banners](docs/images/moments.png)
+
+| Occasion | Banner |
+|---|---|
+| Birthday | "Gratulerer, Nora! 10 år i dag!" in the person's colour; birthdays are set per person on the admin page |
+| Christmas | Julaften, 1. and 2. juledag and romjul: red with snow; Juleferie: "Dag 4 av 12" |
+| New Year | Nyttårsaften and 1. januar: blue with fireworks |
+| Advent | The four Sundays: green with candles, one more lit each week, and "18 dager til jul" |
+| Easter | Skjærtorsdag to 2. påskedag and påskeferie: yellow with Easter eggs |
+| 17. mai | Red with flags: "Hipp hurra!" |
+| School holidays | Vinter-, sommer- and høstferie with their own decorations and "Dag 2 av 5" |
+| Days off | Planleggingsdag and other days off: "Fri i dag! Nora og Emil har fri" |
+| Other days | Morsdag, farsdag, fastelavn, Lucia, Sankthans and Halloween |
+| Match day | A fixture from a calendar feed: "Kampdag! 20:45" |
+
+Small yellow lines under the weather add:
+- countdowns, such as "3 dager til Nora 10 år", "4 dager til høstferie" and "14 dager til jul";
+- "Morsdag i morgen!" and "Klokka stilles tilbake en time i natt";
+- "Fint vær i helga" on a sunny Friday;
+- the dinner question from the week's school letter ("Middagsspørsmål: …") in the evening.
+
+All of this can be switched off on the admin page.
 
 ---
 
@@ -208,10 +236,10 @@ Open `https://<id>.lambda-url.eu-west-1.on.aws/admin` on your phone and log in w
 | Tab | What you set there |
 |---|---|
 | **Status** | The picture currently on the frame; when it was made; battery level; how many events were found; one line per subscribed calendar or Spond group (found / new / changed / deleted, or the error); the last school letters read; a "Lag nytt bilde nå" button to make a new picture. |
-| **Familie** | Each person's name, letter, colour and the words that refer to them. For children, the school grade and groups ("gruppe Sild"), which help Claude work out who a letter is about. Grades are set for a school year and move up automatically every August. |
+| **Familie** | Each person's name, letter, colour, birthday and the words that refer to them. Pets can be added as type "dyr". For children, the school grade and groups ("gruppe Sild"), which help Claude work out who a letter is about. Grades are set for a school year and move up automatically every August. |
 | **Regler** | Keyword rules, such as "korps" → music icon + Nora, or "middag:" → food icon. |
 | **Abonnement** | Calendar feeds (any `.ics` address), Spond groups, and a clean-up tool for events left behind by other calendar syncs. |
-| **Visning** | Layout options (see [Display options](#display-options)), when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
+| **Visning** | Layout options (see [Display options](#display-options)), birthdays and special days on or off, when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
 
 Every save keeps the previous version in `config/history/` in S3.
 
@@ -277,6 +305,7 @@ Chosen on the **Visning** tab of the admin page. They can also be set as the `De
 | `husk` | Below the month calendar: "Husk denne uka" reminders and the next waste pickup. |
 | `weather5` | Below the month calendar: the weather for the next five days. |
 | `morning` | Day headings show the 08:00 temperature instead of the day's maximum. |
+| `moments` | Birthday and holiday banners, countdowns and small reminders (on by default; switch on the admin page). |
 
 The default design is `dense`. The `designs/` folder also has `hero`, `agenda` and `band`, which can be chosen with the `Design` stack parameter.
 

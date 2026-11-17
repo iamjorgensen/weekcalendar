@@ -272,6 +272,19 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
     return result
 
 
+DINNER_KEY = "log/dinner.json"
+
+
+def dinner_question(s3, bucket):
+    """The weekly letter's 'Middagssamtalen' question, if it is for this week."""
+    try:
+        d = json.loads(s3.get_object(Bucket=bucket, Key=DINNER_KEY)["Body"].read())
+        y, w, _ = datetime.now(timezone.utc).isocalendar()
+        return d.get("question", "") if d.get("week") == f"{y}-W{w:02d}" else ""
+    except Exception:
+        return ""
+
+
 def spond_test():
     """Run the Spond part of the feed sync now and report what happened (admin 'Test Spond nå')."""
     bucket = os.environ["BUCKET_NAME"]
@@ -349,7 +362,8 @@ def handler(event, context):
         errors.append(f"config: {e}")
     if cfg is not None:
         view = cfg.get("view") or {}
-        os.environ["DESIGN_OPTIONS"] = "+".join(view.get("options") or [])
+        os.environ["DESIGN_OPTIONS"] = "+".join((view.get("options") or [])
+                                                + (["moments"] if view.get("moments", True) else []))
         os.environ["EVENING_HOUR"] = str(view.get("evening_hour", 17))
         days = int(view.get("days") or days)
 
@@ -381,6 +395,11 @@ def handler(event, context):
         logger.exception("Data fetch failed")
         errors.append(f"fetch: {e}")
         data = {}
+
+    if cfg is not None:      # birthdays for the banner, this week's dinner question
+        import config_store
+        data["people"] = config_store.people_for_design(cfg)
+    data["dinner_question"] = dinner_question(s3, bucket)
 
     battery = event.get("battery")
     if not isinstance(battery, int) or not 0 <= battery <= 100:

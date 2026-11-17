@@ -140,7 +140,9 @@ Resources:
             - Sid: ReadAdminConfig
               Effect: Allow
               Action: s3:GetObject
-              Resource: !Sub "${ImageBucket.Arn}/config/*"
+              Resource:
+                - !Sub "${ImageBucket.Arn}/config/*"
+                - !Sub "${ImageBucket.Arn}/log/dinner.json"
             - Sid: ListCache
               Effect: Allow
               Action: s3:ListBucket

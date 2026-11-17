@@ -177,6 +177,14 @@ def handler(event, context):
     logger.info("Ingest %s: %s | %s", event.get("key"), msg,
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
     _log_letter(s3, event.get("bucket"), msg, event.get("key"))
+    question = (result.get("dinner_question") or "").strip()
+    if doc_key and question:       # shown on the frame in the evening that week
+        try:
+            s3.put_object(Bucket=event.get("bucket"), Key="log/dinner.json",
+                          Body=json.dumps({"week": doc_key, "question": question[:200]}, ensure_ascii=False)
+                          .encode("utf-8"), ContentType="application/json")
+        except Exception:
+            logger.exception("Could not store the dinner question")
     return {"ok": True, "message": msg, "week": doc_key, "child": letter_child, "model": models[0],
             "created": created, "deleted": deleted, "skipped": len(skipped), "past": len(past),
             "items": [{"date": i["date"].isoformat(), "title": i["title"], "start": i["start"],

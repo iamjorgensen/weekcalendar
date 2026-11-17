@@ -187,6 +187,10 @@
         <div><label class="f">Antall dager hentet</label><select id="days" onchange="cfg.view.days=+this.value;dirty()"></select></div>
       </div>
       <p class="hint" style="margin-top:10px">Rammen oppdaterer seg til tidene i <code>secrets.py</code> (UPDATE_TIMES).</p></div>
+      <h2>Feiringer og spesielle dager</h2>
+      <div class="card"><div class="toggle-row" style="border:0;padding:0"><div><div class="t">Bursdager, høytider og ferier</div>
+        <div class="d">Stort banner på bursdager, jul, påske, 17. mai, ferier og fridager; nedtellinger og små påminnelser</div></div>
+        <label class="switch"><input type="checkbox" id="moments" onchange="cfg.view.moments=this.checked;dirty()"><span></span></label></div></div>
       <h2>AI for skolebrev</h2>
       <div class="card"><label class="f" style="margin-top:0">Modell som leser brev og bilder</label>
         <select id="aimodel" onchange="cfg.ai={model:this.value};dirty()">
@@ -326,7 +330,8 @@ function renderPeople() {
     <div class="card">
       <div class="row space">
         <div class="row">${chip(p)}<div><b>${esc(p.name)}</b>
-          <div class="small muted">${p.grade ? p.grade + ". trinn" : (p.kind || "person")}</div></div></div>
+          <div class="small muted">${p.grade ? p.grade + ". trinn" : (p.kind || "person")}</div>
+          ${p.birthday ? `<div class="small">🎂 ${esc(bdayText(p.birthday))}</div>` : ""}</div></div>
         <button class="link" onclick="editPerson(${i})">Endre</button>
       </div>
       <div style="margin-top:6px">${p.groups.map((g) => `<span class="tag group">${esc(g)}</span>`).join("")}
@@ -475,6 +480,7 @@ function renderView() {
     c.checked = cfg.view.options.includes(c.dataset.below);
     c.onchange = () => setOpt(c.dataset.below, c.checked);
   });
+  $("#moments").checked = cfg.view.moments !== false;
   $("#evh").innerHTML = [15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${h === cfg.view.evening_hour ? "selected" : ""}>${h}:00</option>`).join("");
   $("#days").innerHTML = [7, 10, 14, 21].map((d) => `<option ${d === cfg.view.days ? "selected" : ""}>${d}</option>`).join("");
 }
@@ -502,6 +508,16 @@ function palette(sel) {
 }
 const val = (id) => document.getElementById(id).value;
 
+function bdayText(iso) {
+  const b = new Date(iso + "T12:00:00"), now = new Date(); now.setHours(12, 0, 0, 0);
+  if (isNaN(b)) return iso;
+  let next = new Date(now.getFullYear(), b.getMonth(), b.getDate(), 12);
+  if (next < now) next.setFullYear(now.getFullYear() + 1);
+  const days = Math.round((next - now) / 864e5), age = next.getFullYear() - b.getFullYear();
+  const when = days === 0 ? "i dag!" : days === 1 ? "i morgen" : `om ${days} dager`;
+  return `${b.toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" })} · fyller ${age} ${when}`;
+}
+
 function editPerson(i) {
   const p = i >= 0 ? cfg.people[i] : { name: "", letter: "", color: "BLACK", kind: "barn", grade: null, groups: [], words: [] };
   openDialog(i >= 0 ? `Endre ${p.name}` : "Ny person", `
@@ -509,8 +525,11 @@ function editPerson(i) {
       <div><label class="f">Bokstav</label><input id="p-letter" value="${esc(p.letter)}" maxlength="2"></div></div>
     <label class="f">Farge på merket</label>${palette(p.color)}
     <div class="grid2"><div><label class="f">Type</label><select id="p-kind">
-      ${["barn", "voksen", ""].map((k) => `<option value="${k}" ${p.kind === k ? "selected" : ""}>${k || "–"}</option>`).join("")}</select></div>
+      ${["barn", "voksen", "dyr", ""].map((k) => `<option value="${k}" ${p.kind === k ? "selected" : ""}>${k || "–"}</option>`).join("")}</select></div>
       <div><label class="f">Trinn (dette skoleåret)</label><input id="p-grade" type="number" min="1" max="13" value="${p.grade || ""}"></div></div>
+    <div class="grid2"><div><label class="f">Bursdag</label><input id="p-bday" type="date" value="${esc(p.birthday || "")}"></div>
+      <div><label class="f">Feire på skjermen</label><select id="p-cel"><option value="1">Ja</option>
+        <option value="0" ${p.celebrate === false ? "selected" : ""}>Nei</option></select></div></div>
     <label class="f">Grupper (skole, lag) – komma mellom</label><input id="p-groups" value="${esc(p.groups.join(", "))}" placeholder="f.eks. Sild">
     <label class="f">Ord som betyr denne personen – komma mellom</label><input id="p-words" value="${esc(p.words.join(", "))}">
     <p class="hint">Trinnet går automatisk opp hver august.</p>`,
@@ -518,7 +537,8 @@ function editPerson(i) {
       const name = val("p-name").trim(); if (!name) { toast("Navn mangler"); return false; }
       const np = { name, letter: (val("p-letter").trim() || name[0]).toUpperCase(),
         color: ($("#pal .on") || {}).dataset?.c || "BLACK", kind: val("p-kind"),
-        grade: val("p-grade") ? +val("p-grade") : null, groups: list(val("p-groups")), words: list(val("p-words")) };
+        grade: val("p-grade") ? +val("p-grade") : null, groups: list(val("p-groups")), words: list(val("p-words")),
+        birthday: val("p-bday"), celebrate: val("p-cel") !== "0" };
       if (i >= 0) {
         const old = cfg.people[i].name;
         if (old !== name) {   // keep references in rules and feeds

@@ -88,14 +88,40 @@ def hourly():
     return out
 
 
+PEOPLE = [{"name": "Nora", "letter": "N", "color": "YELLOW", "kind": "barn", "birthday": "2016-11-20"},
+          {"name": "Emil", "letter": "E", "color": "GREEN", "kind": "barn", "birthday": "2018-05-02"},
+          {"name": "Oskar", "letter": "O", "color": "BLUE", "kind": "barn", "birthday": "2014-03-09"},
+          {"name": "Kari", "letter": "K", "color": "RED", "kind": "voksen", "birthday": "1986-11-24"},
+          {"name": "Lars", "letter": "L", "color": "BLACK", "kind": "voksen", "birthday": "1984-11-17"},
+          {"name": "Bamse", "letter": "B", "color": "BLUE", "kind": "dyr", "birthday": "2022-12-01"}]
+
 OPTS = {"collapse": True, "tomorrow": True, "evening": True, "advice": True, "month_column": True,
         "upcoming": True}
 
 
-def render(now, opts=OPTS):
-    data = to_design_data({"events": EVENTS, "weather": WEATHER, "hourly_today": hourly(), "battery": 87},
+def render(now, opts=OPTS, people=None):
+    shift = now.date() - NOW.date()      # move the sample week to `now`
+    move = lambda x: dict(x, date=(NOW.date() + timedelta(days=(datetime.fromisoformat(x["date"]).date()
+                                                                - NOW.date()).days) + shift).isoformat())
+    data = to_design_data({"events": [move(e) for e in EVENTS], "weather": [move(w) for w in WEATHER],
+                           "hourly_today": hourly() if not shift else [], "battery": 87, "people": people or []},
                           days=14, now=now)
     return dense.render(data, opts)
+
+
+def moments_sheet():
+    """Birthday and holiday banners side by side."""
+    from PIL import ImageFont
+    opts = dict(OPTS, moments=True)
+    shots = [render(NOW, opts, PEOPLE),                                          # Lars: black and gold
+             render(datetime(2026, 12, 1, 7, 0, tzinfo=OSLO), opts, PEOPLE),     # the dog
+             render(datetime(2026, 12, 6, 7, 0, tzinfo=OSLO), opts, PEOPLE),     # 2nd Sunday of Advent
+             render(datetime(2026, 12, 24, 7, 0, tzinfo=OSLO), opts, PEOPLE)]    # Christmas Eve
+    panels = [im.crop((0, 0, dense.HERO_W, 480)) for im in shots]
+    sheet = Image.new("RGB", (len(panels) * (dense.HERO_W + 12) + 12, 504), (255, 255, 255))
+    for k, p in enumerate(panels):
+        sheet.paste(p, (12 + k * (dense.HERO_W + 12), 12))
+    return sheet
 
 
 def in_frame(img, pad=34):
@@ -120,6 +146,8 @@ def main():
         "frame-evening": render(NOW.replace(hour=18, minute=5)),
         "frame-month-right": render(NOW, {"collapse": True, "tomorrow": True, "advice": True, "month": True}),
     }
+    moments_sheet().save(os.path.join(OUT, "moments.png"))
+    print("wrote moments")
     for name, img in shots.items():
         img.save(os.path.join(OUT, f"{name}-raw.png"))
         in_frame(img).save(os.path.join(OUT, f"{name}.png"))

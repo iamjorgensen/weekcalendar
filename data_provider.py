@@ -552,6 +552,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                             "time": "",
                             "icon": mapped.get("icon") or _private_icon(it),
                             "is_holiday": _is_day_off(it),
+                            "feed": _private(it).get("feed") or "",
                             "icon_size": mapped.get("icon_size"),
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -579,6 +580,8 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                                 "time": "",
                                 "icon": mapped.get("icon") or _private_icon(it),
                                 "is_holiday": _is_day_off(it),
+                                "feed": _private(it).get("feed") or "",
+                                "span": f"{sdt.isoformat()}/{last_day.isoformat()}",
                                 "icon_size": mapped.get("icon_size"),
                                 "icon_color_name": mapped.get("icon_color_name"),
                                 "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -615,6 +618,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                                 "time": time_str,
                                 "icon": mapped.get("icon") or _private_icon(it),
                                 "is_holiday": _is_day_off(it),
+                                "feed": _private(it).get("feed") or "",
                                 "icon_size": mapped.get("icon_size"),
                                 "icon_color_name": mapped.get("icon_color_name"),
                                 "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -657,6 +661,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                             "time": time_str,
                             "icon": mapped.get("icon") or _private_icon(it),
                             "is_holiday": _is_day_off(it),
+                            "feed": _private(it).get("feed") or "",
                             "icon_size": mapped.get("icon_size"),
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -822,6 +827,8 @@ def normalize_event(ev):
 
         out['icon_mode'] = ev.get('icon_mode') or ev.get('mode') or None
         out['is_holiday'] = bool(ev.get('is_holiday'))
+        out['feed'] = ev.get('feed') or ''
+        out['span'] = ev.get('span') or ''
 
         tags = []
         for t in ev.get('tags') or ev.get('structured_tags') or []:

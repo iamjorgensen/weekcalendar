@@ -46,12 +46,22 @@ def waste_label(ev):
 
 
 # ------------------------------------------------------------------ today panel
-def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
+def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0, banner=None, extra_lines=()):
     draw.rectangle([0, 0, HERO_W, H], fill=BLACK)
     x0, x1 = 18, HERO_W - 16
     d = day["date"]
     red = is_red_day(d, day["events"])
 
+    if banner:     # birthday / holiday: a big coloured banner replaces the date heading
+        from designs.splash import draw_banner
+        line = f"{WEEKDAYS[d.weekday()]} {d.day}. {MONTHS[d.month - 1]} · uke {d.isocalendar()[1]}"
+        y = draw_banner(img, draw, HERO_W, banner, line, seed=d.toordinal()) + 4
+    else:
+        y = _today_heading(draw, day, d, red, accent, x0, x1)
+    return _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines)
+
+
+def _today_heading(draw, day, d, red, accent, x0, x1):
     f_day, f_num, f_mon = f_bold(26), f_bold(50), f_body(21)
     y = 14
     heading = day.get("heading") or WEEKDAYS[d.weekday()]
@@ -66,7 +76,10 @@ def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
     nch, mch = cap_height(draw, f_num), cap_height(draw, f_mon)
     draw_text_top(draw, (x0 + text_w(draw, num, f_num) + 10, y + nch - mch), MONTHS[d.month - 1], f_mon, WHITE)
     y += nch + 14
+    return y
 
+
+def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines):
     w = day.get("weather") or {}
     if w:
         isz = 40
@@ -112,6 +125,13 @@ def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
             f_adv = f_body(14)
             draw_text_top(draw, (x0, y), ellipsize(draw, w["advice"], f_adv, x1 - x0), f_adv, YELLOW)
             y += 20
+    for text in extra_lines or ():    # countdowns, clock change, dinner question (may take two lines)
+        from designs.common import wrap
+        f_ln = f_body(14)
+        for part in wrap(draw, text, f_ln, x1 - x0, 2 if text.startswith("Middagsspørsmål") else 1):
+            draw_text_top(draw, (x0, y), part, f_ln, YELLOW)
+            y += 19
+        y += 1
 
     draw.rectangle([x0, y, x1, y + 1], fill=WHITE)
     y += 7
@@ -601,6 +621,22 @@ def render(data, opts=None):
         days = [dict(d, events=[e for e in d["events"] if not e["title"].lower().startswith("husk denne uka")])
                 for d in days]
 
+    # Birthdays, holidays and other special days ("moments")
+    banner, extra = None, []
+    if opts.get("moments"):
+        from designs import moments
+        people = data.get("people") or []
+        banner = None if evening else moments.banner(days[0], people)
+        if banner and banner.get("birthday"):   # the banner says it; drop "Nora 10 år" from today's list
+            names = [n.lower() for n in banner["birthday"]]
+            days[0] = dict(days[0], events=[e for e in days[0]["events"] if not (
+                any(n in e["title"].lower() for n in names)
+                and ("år" in e["title"] or "bursdag" in e["title"].lower()))])
+        extra = moments.lines(days, people, now=now, dinner_question=data.get("dinner_question", ""),
+                              evening=evening)
+        days = moments.birthday_events(days, people, skip=days[0]["date"] if banner and banner.get("birthday")
+                                       else None)
+
     if opts.get("collapse"):
         days = collapse_repeats(days)
 
@@ -610,12 +646,13 @@ def render(data, opts=None):
     month_white = opts.get("month_right") or opts.get("month_column")
     if opts.get("month") and not month_white:
         scratch = Image.new("RGB", (W, H), WHITE)
-        y_full = _today(scratch, ImageDraw.Draw(scratch), days[0], "", battery=None)
+        y_full = _today(scratch, ImageDraw.Draw(scratch), days[0], "", battery=None, banner=banner,
+                        extra_lines=extra)
         mh = month_height(data["today"])
         if (H - 26) - y_full >= mh + 4:
             reserve = mh
     y_end = _today(img, draw, days[0], data.get("updated", ""), battery=data.get("battery"),
-                   reserve_bottom=reserve)
+                   reserve_bottom=reserve, banner=banner, extra_lines=extra)
     if reserve:
         _month(draw, data["today"], {d["date"] for d in days if d["events"]}, H - 26 - reserve)
 

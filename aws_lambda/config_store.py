@@ -19,6 +19,7 @@ Shape:
 """
 import csv
 import io
+import datetime
 import json
 import re
 import time
@@ -27,7 +28,7 @@ import urllib.request
 CONFIG_KEY = "config/config.json"
 HISTORY_PREFIX = "config/history/"
 COLORS = ["BLACK", "RED", "GREEN", "BLUE", "YELLOW"]
-KINDS = ["barn", "voksen", ""]
+KINDS = ["barn", "voksen", "dyr", ""]
 VIEW_OPTIONS = ["collapse", "month", "month_right", "month_column", "husk", "upcoming", "weather5",
                 "tomorrow", "evening", "advice", "morning"]
 AI_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
@@ -104,6 +105,14 @@ def validate(cfg):
             if not 1 <= grade <= 13:
                 raise ConfigError(f"Trinn for {name} må være 1–13")
         kind = _s(p.get("kind")).lower()
+        birthday = _s(p.get("birthday"), 10)
+        if birthday:
+            try:
+                bd = datetime.date.fromisoformat(birthday)
+            except ValueError:
+                raise ConfigError(f"Ugyldig bursdag for {name} (bruk ÅÅÅÅ-MM-DD)")
+            if bd > datetime.date.today():
+                raise ConfigError(f"Bursdagen til {name} er i framtida")
         people.append({
             "name": name,
             "letter": (_s(p.get("letter"), 2) or name[0]).upper(),
@@ -112,6 +121,8 @@ def validate(cfg):
             "grade": grade,
             "groups": [g for g in (_s(x, 40) for x in p.get("groups") or []) if g],
             "words": [w for w in (_s(x, 60) for x in p.get("words") or []) if w],
+            "birthday": birthday,
+            "celebrate": p.get("celebrate", True) is not False,
         })
     out["people"] = people
 
@@ -180,6 +191,7 @@ def validate(cfg):
         "options": [o for o in v.get("options", DEFAULT_VIEW["options"]) if o in VIEW_OPTIONS],
         "evening_hour": min(23, max(12, hour)),
         "days": min(21, max(3, days)),
+        "moments": v.get("moments", True) is not False,     # birthdays, holidays, countdowns
     }
     return out
 
@@ -291,6 +303,13 @@ def event_mappings(cfg):
                      "color": p["color"] if p else "", "match_type": "contains", "size_px": 18})
     # Longest keywords first, so "G16 IK" wins over "IK"
     return sorted(rows, key=lambda x: -len(x["keyword"]))
+
+
+def people_for_design(cfg):
+    """What the frame design needs to celebrate birthdays."""
+    return [{"name": p["name"], "letter": p["letter"], "color": p["color"], "kind": p.get("kind", ""),
+             "birthday": p.get("birthday", ""), "celebrate": p.get("celebrate", True)}
+            for p in cfg.get("people", [])]
 
 
 def feeds_spec(cfg):
