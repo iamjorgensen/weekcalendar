@@ -11,7 +11,7 @@ SSM parameters (under /weekcalendar/):
   CALENDAR_ID           family calendar (also used by the render function)
   CHILDREN              e.g. "Amalie:6,Sigrid:3"  - grade per child ...
   CHILDREN_SCHOOL_YEAR  ... in the school year starting this year (e.g. "2026"); grades advance each August
-  ANTHROPIC_API_KEY     optional: call the Claude API directly (model claude-opus-5-5) instead of Bedrock
+  ANTHROPIC_API_KEY     optional: call the Claude API directly (model claude-sonnet-5-5) instead of Bedrock
   CLAUDE_MODEL          optional model id override (Bedrock ids start with "anthropic.")
 """
 import json
@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 PARAMS = ["GOOGLE_SA_JSON", "CALENDAR_ID", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CLAUDE_MODEL",
           "ANTHROPIC_API_KEY"]
 
-DIRECT_MODEL = "claude-opus-5-5"   # Claude API (Anthropic) model id
+DIRECT_MODEL = "claude-sonnet-5-5"   # Claude API (Anthropic) model id; override with CLAUDE_MODEL
 
 _anthropic_client = None
 

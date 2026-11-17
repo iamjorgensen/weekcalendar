@@ -542,4 +542,4 @@ def test_ingest_uses_claude_api_when_key_is_set(aws, monkeypatch):
     monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: FakeSession([]))
     out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf"}, None)
     assert out["ok"] and keys == ["sk-ant-test"]
-    assert [r["model"] for r in fake_ai.requests] == ["claude-opus-5-5"]
+    assert [r["model"] for r in fake_ai.requests] == ["claude-sonnet-5-5"]
