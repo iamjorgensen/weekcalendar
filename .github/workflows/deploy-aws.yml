@@ -8,7 +8,10 @@ on:
     branches: [main]
     paths:
       - "*.py"
+      - ".dockerignore"
       - "aws_lambda/**"
+      - "designs/**"
+      - "school/**"
       - "infra/**"
       - "assets/fonts/**"
       - "assets/icons/**"
