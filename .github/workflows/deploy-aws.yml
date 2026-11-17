@@ -78,3 +78,16 @@ jobs:
         run: |
           aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" \
             --query "Stacks[0].Outputs" --output table
+
+      - name: Keep only the newest container images
+        # Each deploy pushes a new image; without this, old ones pile up in ECR (storage cost).
+        # Best effort: never fails the deploy.
+        continue-on-error: true
+        run: |
+          POLICY='{"rules":[{"rulePriority":1,"description":"Keep the 5 newest images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
+          for repo in $(aws ecr describe-repositories --region "$AWS_REGION" \
+                          --query "repositories[?starts_with(repositoryName, '${STACK_NAME}')].repositoryName" --output text); do
+            echo "Lifecycle policy on $repo"
+            aws ecr put-lifecycle-policy --region "$AWS_REGION" --repository-name "$repo" \
+              --lifecycle-policy-text "$POLICY" > /dev/null
+          done

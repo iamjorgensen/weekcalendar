@@ -201,7 +201,9 @@ def _day_section(img, draw, x, y, w, day, measure=False, morning=False):
     waste = [e for e in day["events"] if is_waste(e)]
     events = [e for e in day["events"] if not is_waste(e)]
     rows = _layout_rows(draw, events, w)
-    total = hdr_h + sum(h for _, _, h in rows) + (6 if rows else 2)
+    f_none = f_body(14)
+    none_h = 0 if rows else cap_height(draw, f_none) + 10   # "Ingen avtaler" keeps the days apart
+    total = hdr_h + sum(h for _, _, h in rows) + (6 if rows else 2) + none_h
     if measure:
         return total
 
@@ -235,6 +237,8 @@ def _day_section(img, draw, x, y, w, day, measure=False, morning=False):
 
     draw.rectangle([x, y + hdr_h - 3, x + w, y + hdr_h - 3], fill=col)
     cy = y + hdr_h
+    if not rows:
+        draw_text_top(draw, (x + 2, cy + 3), "Ingen avtaler", f_none, col)
     half = (w - 10) // 2
     for kind, payload, h in rows:
         if kind == "pair":
