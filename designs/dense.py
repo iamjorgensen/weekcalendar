@@ -694,6 +694,7 @@ def render(data, opts=None):
       tomorrow  - 'I morgen' block in the black panel when there is room
       month     - mini month calendar at the bottom of the black panel
       morning   - day headers show the temperature at 08 instead of the max
+      evening_upcoming - keep «Kommer» in the evening instead of electricity (Tibber)
     """
     import os
     if opts is None:
@@ -818,7 +819,8 @@ def render(data, opts=None):
         for key in [k for k in ("husk", "upcoming", "weather5") if opts.get(k)]:
             if key == "husk":
                 by = _husk(img, draw, bx, by, col_w, H - 6, husk_days)
-            elif key == "upcoming" and evening and data.get("energy"):   # evening: electricity and car instead
+            elif key == "upcoming" and evening and data.get("energy") and not opts.get("evening_upcoming"):
+                # evening: electricity and car instead (unless the admin page keeps «Kommer»)
                 by = _energy(img, draw, bx, by, col_w, H - 6, data["energy"], data.get("car"))
             elif key == "upcoming":
                 by = _upcoming(img, draw, bx, by, col_w, H - 6, later)

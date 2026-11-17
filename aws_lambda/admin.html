@@ -200,6 +200,12 @@
           <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="husk">«Husk denne uka» – påminnelser og neste tømming</label>
           <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="upcoming">«Kommer» – hendelser etter dagene i lista</label>
           <label class="row" style="gap:8px;margin:6px 0"><input type="checkbox" style="width:auto" data-below="weather5">Været de neste 5 dagene</label>
+          <label class="f">Om kvelden, i stedet for «Kommer»</label>
+          <select id="evebox" onchange="setOpt('evening_upcoming', this.value === 'upcoming')">
+            <option value="energy">Strøm – forbruk og kostnad fra Tibber</option>
+            <option value="upcoming">Behold «Kommer»</option>
+          </select>
+          <p class="hint" style="margin-top:6px">Strøm vises bare når TIBBER_TOKEN er satt.</p>
         </div></div>
       <div class="card"><div class="grid2">
         <div><label class="f">Kveldsmodus fra kl.</label><select id="evh" onchange="cfg.view.evening_hour=+this.value;dirty()"></select></div>
@@ -590,6 +596,7 @@ function renderView() {
     c.checked = cfg.view.options.includes(c.dataset.below);
     c.onchange = () => setOpt(c.dataset.below, c.checked);
   });
+  $("#evebox").value = cfg.view.options.includes("evening_upcoming") ? "upcoming" : "energy";
   $("#moments").checked = cfg.view.moments !== false;
   cfg.view.holidays = cfg.view.holidays || { on: true, julaften: true, nyttarsaften: true };
   $("#holidays").innerHTML = [["on", "Røde helligdager (Norge)", "Regnes ut automatisk hvert år, også påske og pinse"],
