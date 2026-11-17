@@ -577,7 +577,8 @@ def _energy(img, draw, x, y, w, bottom, energy, car=None):
             draw_text_top(draw, (x + w - text_w(draw, est, f_bold(15)), y), est, f_bold(15), BLACK)
             note = f"anslag hele {yc['year']}"
             draw_text_top(draw, (x + w - text_w(draw, note, f_tiny(12)), y + 18), note, f_tiny(12), BLACK)
-        draw_text_top(draw, (x, y + 18), "Norgespris, uten nettleie", f_tiny(12), BLACK)
+        draw_text_top(draw, (x, y + 18), "Norgespris + nettleie" if yc.get("nettleie")
+                      else "Norgespris, uten nettleie", f_tiny(12), BLACK)
         y += 38
     this, last = energy.get("days") or [], energy.get("last_year") or []
     vals = [v for v in this + last if v]
