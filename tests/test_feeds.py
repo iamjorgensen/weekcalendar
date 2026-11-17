@@ -166,3 +166,14 @@ def test_fotmob_feed_alarm_ignored_and_title_cleaned():
 def test_clean_title_keeps_ordinary_text():
     assert feeds.clean_title("Bosnia and Herzegovina - Norway (1-4)") == "Bosnia-Hercegovina – Norge (1-4)"
     assert feeds.clean_title("Juleavslutning") == "Juleavslutning"
+
+
+def test_resync_corrects_title_written_by_old_version():
+    old_title = "\U0001F1E9\U0001F1F0 Denmark - \U0001F1F3\U0001F1F4 Norway starting in 15 minutes Christian"
+    ours = [{"id": "ev-1", "summary": old_title,
+             "start": {"dateTime": "2026-11-17T19:45:00+00:00"}, "end": {"dateTime": "2026-11-17T21:45:00+00:00"},
+             "extendedProperties": {"private": {"source": feeds.SOURCE, "feed": "f", "uid": "1-8492@fotmob.com"}}}]
+    s = Session(ours=ours)
+    stats = feeds.sync_feed(s, "cal", FOTMOB, ["Christian"], "f", TODAY)
+    assert stats["updated"] == 1 and stats["created"] == 0
+    assert s.patched[0][1]["summary"] == "Danmark – Norge Christian"
