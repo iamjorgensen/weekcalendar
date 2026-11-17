@@ -175,7 +175,7 @@ def render(main, mappings, data, days, errors):
 FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
-FEEDS_CODE_VERSION = "6"   # 4: Spond
+FEEDS_CODE_VERSION = "7"   # 4: Spond
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 
@@ -253,7 +253,7 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
                         if not mine:   # never wipe a group because we could not tell who "we" are
                             raise spond_client.SpondError("fant ikke deg eller barna som medlem i gruppene")
                         raw = [e for e in raw if spond_client.accepted(e, mine)]
-                    evs = spond_client.to_feed_events(raw)
+                    evs = spond_client.to_feed_events(raw, g.get("name", ""))
                     result[fid] = feeds.sync_events(session, params["CALENDAR_ID"], evs, g.get("tags", []), fid,
                                                     today, days_ahead=90, icon=g.get("icon", ""))
                     result[fid].update({"name": "Spond: " + (g.get("name") or ""), "found": len(evs)})

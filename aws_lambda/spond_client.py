@@ -90,7 +90,7 @@ def _ts(v):
         return None
 
 
-def to_feed_events(spond_events):
+def to_feed_events(spond_events, group_name=""):
     """Spond events -> the parsed-event shape feeds.sync_events() takes. Cancelled ones get STATUS CANCELLED."""
     out = []
     for e in spond_events or []:
@@ -106,7 +106,7 @@ def to_feed_events(spond_events):
             "end": end if end and end > start else None,
             "all_day": False,
             "location": place,
-            "description": "Fra Spond",
+            "description": f"Fra Spond: {group_name}" if group_name else "Fra Spond",
             "status": "CANCELLED" if e.get("cancelled") else "",
         })
     return out

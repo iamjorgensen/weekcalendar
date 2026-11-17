@@ -253,7 +253,8 @@ def sync_events(session, calendar_id, events, names, fid, today, days_ahead=365,
         if old:
             old_icon = ((old.get("extendedProperties") or {}).get("private") or {}).get("icon", "")
             if (old.get("summary") != body["summary"] or not _same_time(old.get("start", {}), body["start"])
-                    or not _same_time(old.get("end", {}), body["end"]) or old_icon != (icon or "")):
+                    or not _same_time(old.get("end", {}), body["end"]) or old_icon != (icon or "")
+                    or (old.get("description") or "") != body["description"]):
                 _check(session.patch(_url(calendar_id, "/" + old["id"]),
                                      json={k: body[k] for k in ("summary", "start", "end", "description",
                                                                 "extendedProperties")}),

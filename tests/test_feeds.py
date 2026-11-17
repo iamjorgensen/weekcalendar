@@ -95,6 +95,7 @@ class Session:
 
 def _ours(uid, start_iso, summary):
     return {"id": "ev-" + uid, "summary": summary, "start": {"dateTime": start_iso},
+            "description": "Fra kalenderabonnement",
             "end": {"dateTime": start_iso},
             "extendedProperties": {"private": {"source": feeds.SOURCE, "feed": "f", "uid": uid}}}
 

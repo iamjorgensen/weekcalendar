@@ -207,3 +207,9 @@ def test_spond_test_action_reports(aws, monkeypatch):
     rep = render_handler.handler({"action": "spond_test"}, None)
     assert rep["groups_on"] == ["JR IK G16"] and rep["errors"] == []
     assert rep["result"]["spond-G1"]["name"] == "Spond: JR IK G16" and rep["result"]["spond-G1"]["found"] == 2   # the one without a title is dropped
+
+
+def test_description_names_the_group():
+    ev = spond_client.to_feed_events([{"id": "E1", "heading": "Trening", "startTimestamp": "2026-11-20T16:00:00Z"}],
+                                     "JR IK G16")[0]
+    assert ev["description"] == "Fra Spond: JR IK G16"
