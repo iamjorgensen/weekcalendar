@@ -1,12 +1,12 @@
 # weekcalendar on AWS
 
-This replaces the Raspberry Pi. Two small Lambda functions in **eu-west-1 (Ireland)**:
+The backend: small Lambda functions in **eu-west-1 (Ireland)**:
 
 | Piece | What it does |
 |---|---|
 | **Render** function (container image) | Runs **when the frame asks for it** (`image.png?fresh=1`, at the frame's ~04:00 wake-up and on its refresh button). Optionally also on a nightly schedule (off by default, see *Changing things*). Fetches calendar, waste pickup and weather data, renders the 800x480 image with the same code as `main.py`, writes `latest/output.png`, `latest/output.jpg` and `latest/meta.json` to a private S3 bucket. |
 | **Serve** function (small zip) with a public **Function URL** | Gives the frame the image. Every request needs the shared secret `FRAME_TOKEN`. |
-| SSM Parameter Store `/weekcalendar/*` | All config and API keys (replaces `.env`). |
+| SSM Parameter Store `/weekcalendar/*` | All config and API keys. |
 | S3 bucket | `latest/` (images + meta) and `cache/` (AI icon cache, Google Sheet mappings cache, downloaded icons). |
 
 Endpoints (`<url>` is the `FunctionUrl` output, it ends with `/`):
@@ -23,7 +23,6 @@ Wrong or missing token gives `401`.
 
 > **Frame HTTP timeout:** for `fresh=1` the frame must wait up to ~60–75 s for the response. Set the HTTP/socket timeout in the frame's MicroPython code to at least 60 s for that request. Normal fetches (without `fresh=1`) return in well under a second.
 
-The Pi setup (`main.py` + `server.py`) still works unchanged.
 
 ---
 
@@ -31,7 +30,7 @@ The Pi setup (`main.py` + `server.py`) still works unchanged.
 
 **Shortcut:** steps 2 and 4 below can be done in one go. Open AWS CloudShell in eu-west-1 and run
 `bash <(curl -fsSL https://raw.githubusercontent.com/iamjorgensen/weekcalendar/feat/aws-lambda/infra/setup.sh)`,
-then paste your Pi's `.env` when asked. It creates the deploy role, stores the settings in SSM and makes a FRAME_TOKEN.
+then paste your settings as `KEY=value` lines when asked. It creates the deploy role, stores the settings in SSM and makes a FRAME_TOKEN.
 
 You need: an AWS account, admin access to the GitHub repo. All `aws` commands below can be run in **AWS CloudShell** (the `>_` icon in the AWS console top bar, no install needed). Make sure the region selector in the console says **Europe (Ireland) eu-west-1**.
 
@@ -98,7 +97,7 @@ aws ssm put-parameter --region $R --overwrite --type String       --name $P/LON 
 aws ssm put-parameter --region $R --overwrite --type SecureString --name $P/OPENAI_API_KEY       --value '<openai-api-key>'
 ```
 
-The values are the same as in the Pi's `.env`. Parameter Store standard parameters are free. SSM does not accept empty values: if you don't use something, just don't create it.
+Parameter Store standard parameters are free. SSM does not accept empty values: if you don't use something, just don't create it.
 
 Changing a parameter later: run the same command again. The render function reads parameters on start-up; a container that is still warm keeps the old values for a while, so if you need it immediately, redeploy (step 5).
 
@@ -132,13 +131,13 @@ Open `calendar.png` and check it. `status` lists `missing_params` and `errors` i
 
 ### 7. Point the frame at AWS
 
-In the frame's config, replace the Pi URL with this (used both at wake-up and for the refresh button; the frame triggers the render itself):
+In the frame's `secrets.py`, set `CALENDAR_URL` to this (used both at wake-up and for the refresh button; the frame triggers the render itself):
 
 ```
 https://<id>.lambda-url.eu-west-1.on.aws/image.png?token=<FRAME_TOKEN>&fresh=1
 ```
 
-with an HTTP timeout of at least 60 s for the refresh request. Once that works, the Pi can be switched off.
+with an HTTP timeout of at least 60 s for the refresh request.
 
 ---
 

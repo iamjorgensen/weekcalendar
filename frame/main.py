@@ -1,9 +1,8 @@
 # Inky Frame 7.3" (Pico 2 W) - weekcalendar client
 #
 # Wakes at UPDATE_TIMES (and whenever a front button wakes it), downloads the
-# calendar image and shows it. Works with both:
-#   - AWS:  CALENDAR_URL = "https://<id>.lambda-url.eu-west-1.on.aws/image.png?token=<FRAME_TOKEN>&fresh=1"
-#   - Pi:   CALENDAR_URL = "http://inkyserver.local:8000/image", PRE_TRIGGER_URL = ".../run-main?wait=1"
+# calendar image and shows it:
+#   CALENDAR_URL = "https://<id>.lambda-url.eu-west-1.on.aws/image.png?token=<FRAME_TOKEN>&fresh=1"
 # PNG or JPEG is detected from the file itself.
 #
 # Settings and passwords live in secrets.py on the frame (see secrets_example.py).

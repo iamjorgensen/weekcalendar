@@ -6,7 +6,7 @@
 # It:
 #   1. creates the GitHub deploy role (stack "weekcalendar-bootstrap"),
 #   2. stores your settings/keys in SSM Parameter Store (/weekcalendar/*),
-#      read from your Pi's .env that you paste in - nothing leaves your AWS account,
+#      read from KEY=value lines that you paste in - nothing leaves your AWS account,
 #   3. creates a random FRAME_TOKEN for the frame (kept if one already exists).
 # Safe to run again.
 set -euo pipefail
@@ -42,12 +42,12 @@ aws cloudformation deploy \
 ROLE_ARN=$(aws cloudformation describe-stacks --stack-name weekcalendar-bootstrap \
   --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text)
 
-# --- 2. Settings from the Pi's .env -----------------------------------------
+# --- 2. Settings (KEY=value lines) -----------------------------------------
 SECRET_KEYS=" API_KEY_GOOGLE CALENDAR_ID MOVAR_API_TOKEN MOVAR_GATENAVN MOVAR_HUSNR OPENAI_API_KEY "
 PLAIN_KEYS=" HOLIDAYS_CALENDAR_ID MOVAR_BASE KOMMUNENR LAT LON OPENAI_MODEL "
 
 echo
-echo "Paste the contents of your Pi's .env file (~/weekcalendar/.env)."
+echo "Paste your settings as KEY=value lines (one per line)."
 echo "When done, press Enter and then Ctrl-D. (Input is not shown on screen.)"
 stty -echo 2>/dev/null || true
 ENV_TEXT=$(cat)

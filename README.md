@@ -71,7 +71,7 @@ After 17:00 the big panel switches to **tomorrow** ("I morgen"), with tomorrow's
 | **A USB cable to your computer** | Needed once, to install the code with Thonny. |
 | **2.4 GHz Wi-Fi** | The Pico 2 W can't use 5 GHz networks. |
 
-Nothing else is needed: the AWS backend replaces the server that used to run on a Raspberry Pi.
+Nothing else is needed: there is no server at home, the backend runs in AWS.
 
 ---
 
@@ -320,7 +320,6 @@ node docs/mockups/admin_shots.js            # re-take the admin screenshots (nee
 
 **Line endings:** `main.py`, `data_provider.py`, `weather_provider.py` and `layout_renderer.py` use CRLF line endings, so keep them when editing.
 
-The original Raspberry Pi setup (`server.py` + `main.py`) still works if you prefer to run it at home.
 
 ---
 
@@ -335,7 +334,7 @@ school/                School letters: extract.py (Claude prompt + schema), cale
 designs/               Image designs (dense, hero, agenda, band), adapter.py, common.py
 data_provider.py       Fetches calendar, holidays, waste pickup and weather; keyword -> icon/badge mapping
 weather_provider.py    MET Norway (yr.no) forecasts
-main.py                Renders the picture (used by both AWS and the old Pi server)
+main.py                Renders the picture (called by the render function)
 infra/                 SAM template, Dockerfile, bootstrap stack, AWS setup guide
 docs/                  README pictures and the scripts that make them
 tests/                 pytest suite
