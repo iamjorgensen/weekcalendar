@@ -11,7 +11,8 @@ SSM parameters (under /weekcalendar/):
   CALENDAR_ID           family calendar (also used by the render function)
   CHILDREN              e.g. "Amalie:6,Sigrid:3"  - grade per child ...
   CHILDREN_SCHOOL_YEAR  ... in the school year starting this year (e.g. "2026"); grades advance each August
-  CLAUDE_MODEL          optional Bedrock model id (default anthropic.claude-opus-5-5, falls back to opus-4-8)
+  ANTHROPIC_API_KEY     optional: call the Claude API directly (model claude-opus-5-5) instead of Bedrock
+  CLAUDE_MODEL          optional model id override (Bedrock ids start with "anthropic.")
 """
 import json
 import logging
@@ -29,13 +30,20 @@ try:
 except Exception:  # pragma: no cover
     OSLO = None
 
-PARAMS = ["GOOGLE_SA_JSON", "CALENDAR_ID", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CLAUDE_MODEL"]
+PARAMS = ["GOOGLE_SA_JSON", "CALENDAR_ID", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CLAUDE_MODEL",
+          "ANTHROPIC_API_KEY"]
+
+DIRECT_MODEL = "claude-opus-5-5"   # Claude API (Anthropic) model id
 
 _anthropic_client = None
 
 
-def anthropic_client():
+def anthropic_client(api_key=None):
+    """Claude API client when an Anthropic API key is configured, else Claude in Amazon Bedrock."""
     global _anthropic_client
+    if api_key:
+        from anthropic import Anthropic
+        return Anthropic(api_key=api_key)
     if _anthropic_client is None:
         from anthropic import AnthropicBedrockMantle
         _anthropic_client = AnthropicBedrockMantle(aws_region=os.environ.get("BEDROCK_REGION")
@@ -84,9 +92,13 @@ def handler(event, context):
     kids_now = extract.children_now(children, base_year, today)
 
     try:
-        models = ([params["CLAUDE_MODEL"]] if params.get("CLAUDE_MODEL") else [extract.MODEL]) \
-            + extract.FALLBACK_MODELS
-        result = extract.call_model(anthropic_client(), data, content_type, today,
+        api_key = params.get("ANTHROPIC_API_KEY")
+        if api_key:   # Claude API directly: plain model ids, no Bedrock fallbacks
+            models = [params.get("CLAUDE_MODEL") or DIRECT_MODEL]
+        else:         # Claude in Amazon Bedrock
+            models = ([params["CLAUDE_MODEL"]] if params.get("CLAUDE_MODEL") else [extract.MODEL]) \
+                + extract.FALLBACK_MODELS
+        result = extract.call_model(anthropic_client(api_key), data, content_type, today,
                                     existing=existing, children_now=kids_now, models=models)
         grade = int(result.get("grade") or 0)
         letter_child = extract.child_for_grade(grade, children, base_year, today) if grade else None

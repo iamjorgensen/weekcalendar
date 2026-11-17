@@ -470,7 +470,7 @@ def test_ingest_end_to_end(aws, monkeypatch):
     s3.put_object(Bucket=BUCKET, Key="inbox/a.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
     fake_ai = FakeAnthropic(UKE47)
     session = FakeSession([{"summary": "Foreldremøte 6B", "start": {"dateTime": "2026-12-03T17:00:00Z"}}])
-    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda: fake_ai)
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda api_key=None: fake_ai)
     monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: session)
 
     class FixedDT(ingest_handler.datetime):
@@ -500,7 +500,7 @@ def test_ingest_flyer_skips_past_dates(aws, monkeypatch):
     _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "CHILDREN": "Amalie:6,Sigrid:3"})
     s3.put_object(Bucket=BUCKET, Key="inbox/f.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
     session = FakeSession([])
-    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda: FakeAnthropic(FLYER))
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda api_key=None: FakeAnthropic(FLYER))
     monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: session)
 
     class FixedDT(ingest_handler.datetime):
@@ -530,3 +530,16 @@ def test_upload_accepts_rich_text(aws, fake_lambda, monkeypatch, data, ctype, ex
     resp = serve_handler.handler(_upload_event(data, ctype), FakeContext())
     assert resp["statusCode"] == 200
     assert json.loads(fake_lambda.calls[-1]["Payload"])["key"].endswith(ext)
+
+
+def test_ingest_uses_claude_api_when_key_is_set(aws, monkeypatch):
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "CHILDREN": "Amalie:6,Sigrid:3",
+                      "CHILDREN_SCHOOL_YEAR": "2026", "ANTHROPIC_API_KEY": "sk-ant-test"})
+    s3.put_object(Bucket=BUCKET, Key="inbox/a.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
+    fake_ai, keys = FakeAnthropic(UKE47), []
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda api_key=None: (keys.append(api_key), fake_ai)[1])
+    monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: FakeSession([]))
+    out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf"}, None)
+    assert out["ok"] and keys == ["sk-ant-test"]
+    assert [r["model"] for r in fake_ai.requests] == ["claude-opus-5-5"]
