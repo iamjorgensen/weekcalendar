@@ -191,3 +191,12 @@ def test_feed_icon_stored_and_old_events_patched():
     s2 = Session(ours=ours)
     stats = feeds.sync_feed(s2, "cal", FOTMOB, ["Christian"], "f", TODAY, icon="soccer")
     assert stats["updated"] == 1 and s2.patched[0][1]["extendedProperties"]["private"]["icon"] == "soccer"
+
+
+def test_cancelled_events_are_removed():
+    cancelled = ICS.replace("UID:match-2@fotmob\r\n", "UID:match-2@fotmob\r\nSTATUS:CANCELLED\r\n")
+    ours = [_ours("match-2@fotmob", "2027-03-25T20:45:00+01:00", "Italia – Norge Christian")]
+    s = Session(ours=ours)
+    stats = feeds.sync_feed(s, "cal", cancelled, ["Christian"], "f", TODAY)
+    assert stats["deleted"] == 1 and s.deleted == ["ev-match-2@fotmob"]
+    assert all("Italia" not in b["summary"] for b in s.posted)

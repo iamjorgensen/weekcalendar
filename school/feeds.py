@@ -161,6 +161,8 @@ def parse_ics(text):
             cur["location"] = _unescape(value)
         elif name == "DESCRIPTION":
             cur["description"] = _unescape(value)
+        elif name == "STATUS":
+            cur["status"] = value.strip().upper()
         elif name in ("DTSTART", "DTEND"):
             dt, all_day = _parse_dt(value, params)
             cur["start" if name == "DTSTART" else "end"] = dt
@@ -218,6 +220,8 @@ def sync_feed(session, calendar_id, ics_text, names, fid, today, days_ahead=365,
     window_end = today + timedelta(days=days_ahead)
     wanted = []
     for ev in parse_ics(ics_text):
+        if ev.get("status") == "CANCELLED":
+            continue     # cancelled: not wanted, so an existing copy is deleted below
         d = ev["start"] if ev.get("all_day") else ev["start"].astimezone(ZoneInfo(TZ)).date() \
             if ZoneInfo else ev["start"].date()
         if today <= d <= window_end:
