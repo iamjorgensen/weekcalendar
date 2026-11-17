@@ -191,6 +191,22 @@ def test_private_icon_from_calendar_event():
     assert data_provider._private_icon({}) is None
 
 
+def test_day_off_from_school_letter_is_red_with_icon():
+    import data_provider
+    from designs.adapter import to_design_data
+    from designs.common import is_red_day
+    item = {"extendedProperties": {"private": {"source": "weekcalendar-ukebrev", "kind": "closed"}}}
+    assert data_provider._is_day_off(item) and data_provider._private_icon(item) == "umbrella_beach"
+    assert not data_provider._is_day_off({"extendedProperties": {"private": {"kind": "gym"}}})
+    # what the normalised event looks like after fetch: is_holiday carried through to the design
+    from datetime import datetime
+    now = datetime(2026, 11, 17, 7, 0)
+    ev = {"date": "2026-11-18", "time": "", "name": "Planleggingsdag", "display_text": "Planleggingsdag",
+          "icon": "umbrella_beach", "is_holiday": True, "tags": []}
+    day = to_design_data({"events": [ev]}, days=3, now=now)["days"][1]
+    assert day["events"][0]["icon"] == "umbrella_beach" and is_red_day(day["date"], day["events"])
+
+
 @pytest.mark.parametrize("opt", ["month_right", "month_column"])
 def test_month_on_white_side(opt):
     from designs import dense

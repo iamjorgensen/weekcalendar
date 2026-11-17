@@ -463,12 +463,22 @@ def _ensure_aware(dt):
     return dt.astimezone(timezone.utc)
 
 
-def _private_icon(item):
-    """Icon stored on the event by our own sync (e.g. calendar feeds): extendedProperties.private.icon."""
+def _private(item):
     try:
-        return ((item.get("extendedProperties") or {}).get("private") or {}).get("icon") or None
+        return (item.get("extendedProperties") or {}).get("private") or {}
     except Exception:
-        return None
+        return {}
+
+
+def _is_day_off(item):
+    """A day off read from a school letter / skolerute (kind 'closed'): shown as a red day."""
+    return _private(item).get("kind") == "closed"
+
+
+def _private_icon(item):
+    """Icon stored on the event by our own sync (e.g. calendar feeds): extendedProperties.private.icon.
+    Days off from school letters get the beach umbrella."""
+    return _private(item).get("icon") or ("umbrella_beach" if _is_day_off(item) else None)
 
 
 def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
@@ -541,6 +551,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                             "tag_color_rgb": mapped.get("tag_color_rgb"),
                             "time": "",
                             "icon": mapped.get("icon") or _private_icon(it),
+                            "is_holiday": _is_day_off(it),
                             "icon_size": mapped.get("icon_size"),
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -567,6 +578,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                                 "tag_color_rgb": mapped.get("tag_color_rgb"),
                                 "time": "",
                                 "icon": mapped.get("icon") or _private_icon(it),
+                                "is_holiday": _is_day_off(it),
                                 "icon_size": mapped.get("icon_size"),
                                 "icon_color_name": mapped.get("icon_color_name"),
                                 "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -602,6 +614,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                                 "tag_color_rgb": mapped.get("tag_color_rgb"),
                                 "time": time_str,
                                 "icon": mapped.get("icon") or _private_icon(it),
+                                "is_holiday": _is_day_off(it),
                                 "icon_size": mapped.get("icon_size"),
                                 "icon_color_name": mapped.get("icon_color_name"),
                                 "icon_color_rgb": mapped.get("icon_color_rgb"),
@@ -643,6 +656,7 @@ def fetch_google_calendar_events(days=DEFAULT_DAYS, session=None):
                             "tag_color_rgb": mapped.get("tag_color_rgb"),
                             "time": time_str,
                             "icon": mapped.get("icon") or _private_icon(it),
+                            "is_holiday": _is_day_off(it),
                             "icon_size": mapped.get("icon_size"),
                             "icon_color_name": mapped.get("icon_color_name"),
                             "icon_color_rgb": mapped.get("icon_color_rgb"),

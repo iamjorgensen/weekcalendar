@@ -182,7 +182,8 @@ def _layout_rows(draw, events, w):
     while i < len(events):
         a = events[i]
         b = events[i + 1] if i + 1 < len(events) else None
-        if b is not None and _compact_width(draw, a) <= half and _compact_width(draw, b) <= half:
+        if (b is not None and not a.get("is_holiday") and not b.get("is_holiday")   # days off keep their icon
+                and _compact_width(draw, a) <= half and _compact_width(draw, b) <= half):
             rows.append(("pair", (a, b), one_h))
             i += 2
             continue
@@ -405,7 +406,7 @@ def _month_light(img, draw, today, days, x, y, w, big=False):
             for _l, col in e.get("people") or []:
                 if col not in people:
                     people.append(col)
-        info[d["date"]] = (people, bool(d["events"]))
+        info[d["date"]] = (people, bool(d["events"]), any(e.get("is_holiday") for e in d["events"]))
     for week in calendar.Calendar(0).monthdatescalendar(today.year, today.month):
         if big:
             wn = str(week[0].isocalendar()[1])
@@ -422,8 +423,9 @@ def _month_light(img, draw, today, days, x, y, w, big=False):
                 draw.rectangle([cx - tw / 2 - pad - 2, yy - pad, cx + tw / 2 + pad + 2, yy + th + pad], fill=BLACK)
                 draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, WHITE)
             else:
-                draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, RED if i >= 5 else BLACK)
-            people, any_ev = info.get(d, ([], False))
+                off = info.get(d, ([], False, False))[2]
+                draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, RED if i >= 5 or off else BLACK)
+            people, any_ev, _off = info.get(d, ([], False, False))
             if d > today and any_ev:
                 if big and people:
                     n = min(4, len(people))
