@@ -405,6 +405,14 @@ def handler(event, context):
         except Exception as e:
             errors.append(f"mappings: {e}")
 
+    # Public holidays: calculated in code when the admin page says so, instead of
+    # reading Google's holiday calendar (which also lists non-holidays).
+    hol = ((cfg or {}).get("view") or {}).get("holidays") or {}
+    use_code_holidays = cfg is not None and hol.get("on", True)
+    if not hasattr(data_provider, "_google_holidays"):
+        data_provider._google_holidays = data_provider.fetch_google_holiday_events
+    data_provider.fetch_google_holiday_events = ((lambda *a, **k: []) if use_code_holidays
+                                                 else data_provider._google_holidays)
     try:
         data = fetch_data(data_provider, days) or {}
     except Exception as e:
@@ -412,6 +420,12 @@ def handler(event, context):
         errors.append(f"fetch: {e}")
         data = {}
 
+    if use_code_holidays:
+        from designs import moments
+        today = datetime.now(timezone.utc).date()
+        data["events"] = list(data.get("events") or []) + moments.holiday_events(
+            today - timedelta(days=1), today + timedelta(days=max(days, 14) + 45),
+            julaften=hol.get("julaften", True), nyttarsaften=hol.get("nyttarsaften", True))
     if cfg is not None:      # birthdays for the banner, this week's dinner question
         import config_store
         data["people"] = config_store.people_for_design(cfg)

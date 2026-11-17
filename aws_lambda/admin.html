@@ -191,6 +191,8 @@
       <div class="card"><div class="toggle-row" style="border:0;padding:0"><div><div class="t">Bursdager, høytider og ferier</div>
         <div class="d">Stort banner på bursdager, jul, påske, 17. mai, ferier og fridager; nedtellinger og små påminnelser</div></div>
         <label class="switch"><input type="checkbox" id="moments" onchange="cfg.view.moments=this.checked;dirty()"><span></span></label></div></div>
+      <h2>Helligdager</h2>
+      <div class="card" id="holidays"></div>
       <h2>AI for skolebrev</h2>
       <div class="card"><label class="f" style="margin-top:0">Modell som leser brev og bilder</label>
         <select id="aimodel" onchange="cfg.ai={model:this.value};dirty()">
@@ -481,6 +483,12 @@ function renderView() {
     c.onchange = () => setOpt(c.dataset.below, c.checked);
   });
   $("#moments").checked = cfg.view.moments !== false;
+  cfg.view.holidays = cfg.view.holidays || { on: true, julaften: true, nyttarsaften: true };
+  $("#holidays").innerHTML = [["on", "Røde helligdager (Norge)", "Regnes ut automatisk hvert år, også påske og pinse"],
+    ["julaften", "Julaften som fridag", "Rød dag 24. desember"], ["nyttarsaften", "Nyttårsaften som fridag", "Rød dag 31. desember"]]
+    .map(([k, t, d]) => `<div class="toggle-row"><div><div class="t">${t}</div><div class="d">${d}</div></div>
+      <label class="switch"><input type="checkbox" ${cfg.view.holidays[k] !== false ? "checked" : ""}
+        onchange="cfg.view.holidays['${k}']=this.checked;dirty()"><span></span></label></div>`).join("");
   $("#evh").innerHTML = [15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${h === cfg.view.evening_hour ? "selected" : ""}>${h}:00</option>`).join("");
   $("#days").innerHTML = [7, 10, 14, 21].map((d) => `<option ${d === cfg.view.days ? "selected" : ""}>${d}</option>`).join("");
 }

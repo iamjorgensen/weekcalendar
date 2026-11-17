@@ -47,6 +47,34 @@ def advent_sundays(year):
     return [d - timedelta(weeks=3 - k) for k in range(4)]
 
 
+def public_holidays(year, julaften=True, nyttarsaften=True):
+    """[(date, name)]: the official Norwegian public holidays (red days), plus the two eves if wanted."""
+    e = easter(year)
+    days = [(date(year, 1, 1), "Nyttårsdag"), (e - timedelta(days=3), "Skjærtorsdag"),
+            (e - timedelta(days=2), "Langfredag"), (e, "1. påskedag"), (e + timedelta(days=1), "2. påskedag"),
+            (date(year, 5, 1), "Arbeidernes dag"), (date(year, 5, 17), "Grunnlovsdag"),
+            (e + timedelta(days=39), "Kristi himmelfartsdag"), (e + timedelta(days=49), "1. pinsedag"),
+            (e + timedelta(days=50), "2. pinsedag"), (date(year, 12, 25), "1. juledag"),
+            (date(year, 12, 26), "2. juledag")]
+    if julaften:
+        days.append((date(year, 12, 24), "Julaften"))
+    if nyttarsaften:
+        days.append((date(year, 12, 31), "Nyttårsaften"))
+    return sorted(days)
+
+
+def holiday_events(start, end, julaften=True, nyttarsaften=True):
+    """Public holidays between start and end as calendar events (data_provider shape): red days with a flag."""
+    out = []
+    for y in range(start.year, end.year + 1):
+        for d, name in public_holidays(y, julaften, nyttarsaften):
+            if start <= d <= end:
+                out.append({"date": d.isoformat(), "time": "", "name": name, "display_text": name,
+                            "original_name": name, "icon": "flag", "is_holiday": True, "tags": [],
+                            "feed": "", "span": ""})
+    return out
+
+
 def special_days(year):
     """{date: key} for the days that get their own banner."""
     e = easter(year)

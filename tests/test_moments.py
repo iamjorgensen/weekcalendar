@@ -147,3 +147,15 @@ def test_red_warning_beats_birthday_orange_does_not():
     red = [dict(ws[0], level=3, color="red")]
     img = dense.render(dict(base, warnings=red), {"moments": True})
     assert img.getpixel((5, 60)) == RED                                   # red warning banner
+
+
+def test_public_holidays_calculated():
+    h = dict((n, d) for d, n in moments.public_holidays(2027))
+    assert h["Kristi himmelfartsdag"] == date(2027, 5, 6) and h["2. pinsedag"] == date(2027, 5, 17)
+    assert h["Langfredag"] == date(2027, 3, 26) and len(h) == 14
+    assert "Julaften" not in dict((n, d) for d, n in moments.public_holidays(2027, julaften=False))
+    evs = moments.holiday_events(date(2026, 12, 20), date(2027, 1, 2))
+    assert [e["name"] for e in evs] == ["Julaften", "1. juledag", "2. juledag", "Nyttårsaften", "Nyttårsdag"]
+    assert all(e["is_holiday"] and e["icon"] == "flag" for e in evs)
+    import config_store
+    assert config_store.validate({})["view"]["holidays"] == {"on": True, "julaften": True, "nyttarsaften": True}

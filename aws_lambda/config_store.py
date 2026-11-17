@@ -192,6 +192,9 @@ def validate(cfg):
         "evening_hour": min(23, max(12, hour)),
         "days": min(21, max(3, days)),
         "moments": v.get("moments", True) is not False,     # birthdays, holidays, countdowns
+        # red public holidays, calculated in code (replaces Google's holiday calendar)
+        "holidays": {k: (v.get("holidays") or {}).get(k, True) is not False
+                     for k in ("on", "julaften", "nyttarsaften")},
     }
     return out
 

@@ -573,3 +573,29 @@ def test_render_syncs_calendar_feeds_then_throttles(aws, monkeypatch):
 def test_render_without_feeds_config_does_nothing(aws):
     s3, _ssm = aws
     assert render_handler.sync_calendar_feeds(s3, BUCKET, []) is None
+
+
+def test_render_uses_code_holidays_instead_of_google_stream(aws, monkeypatch, offline, fresh_app, tmp_path):
+    import config_store
+    s3, ssm = aws
+    _put_params(ssm, {"API_KEY_GOOGLE": "k", "CALENDAR_ID": "c@example.com"})
+    seen = {}
+
+    def fake_fetch(days=7, **kwargs):
+        import data_provider as dp
+        seen["google_holidays"] = dp.fetch_google_holiday_events()     # must be switched off
+        return _sample_data()
+
+    main, data_provider, mappings = _prepare_render(aws, monkeypatch, fake_fetch)
+    captured = {}
+    orig_render = render_handler.render
+    monkeypatch.setattr(render_handler, "render", lambda m, mp, data, d, e: (captured.update(data), orig_render(m, mp, data, d, e))[1])
+    config_store.save(s3, BUCKET, {"people": [{"name": "Nora"}], "view": {"holidays": {"on": True, "julaften": False}}})
+    assert render_handler.handler({"source": "test"}, None)["ok"] is True
+    assert seen["google_holidays"] == []
+    hol = [e for e in captured["events"] if e.get("is_holiday") and e.get("icon") == "flag"]
+    assert all(e["name"] != "Julaften" for e in hol)
+    # off on the admin page: Google's stream is used again (warm container restored)
+    config_store.save(s3, BUCKET, {"people": [{"name": "Nora"}], "view": {"holidays": {"on": False}}})
+    render_handler.handler({"source": "test"}, None)
+    assert data_provider.fetch_google_holiday_events is data_provider._google_holidays

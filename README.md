@@ -53,7 +53,7 @@ After 17:00 the big panel switches to **tomorrow** ("I morgen"), with tomorrow's
 **Other features**
 
 - **Shortened repeats:** an all-day event that repeats is shown once, as "Juleverksted (tir–fre)", instead of on every day.
-- **Days off:** these get a beach umbrella icon and a red date. Public holidays come from Google's holiday calendar; school holidays come from the school calendar you send in (see [school letters](#6-send-school-letters-from-your-phone)).
+- **Days off:** red dates. Norwegian public holidays (with a flag) are calculated in code every year, Easter and Pentecost included; julaften and nyttårsaften can be switched on or off on the admin page. School holidays and days off (with a beach umbrella) come from the school calendar you send in (see [school letters](#6-send-school-letters-from-your-phone)).
 - **Battery level:** shown in the corner. The frame measures it and sends it along with its next request.
 - **Birthdays and special days:** see below.
 - **Layouts:** different layouts can be chosen on the admin page. For example, here the month calendar is replaced by more days:
@@ -204,7 +204,6 @@ All keys and secrets are stored in **AWS Systems Manager → Parameter Store** (
 | `GOOGLE_SA_JSON` | for writing | The full JSON key file of the service account. |
 | `ANTHROPIC_API_KEY` | for school letters | An Anthropic API key from [console.anthropic.com](https://console.anthropic.com). |
 | `LAT`, `LON` | recommended | Your location, used for the weather from [MET Norway / yr.no](https://api.met.no). |
-| `HOLIDAYS_CALENDAR_ID` | optional | A Google holiday calendar, for example Norwegian public holidays. |
 | `MOVAR_API_TOKEN`, `MOVAR_BASE`, `KOMMUNENR`, `MOVAR_GATENAVN`, `MOVAR_HUSNR` | optional | Waste pickup dates (Movar). Leave them out if your area is served by another company. |
 | `SPOND_EMAIL`, `SPOND_PASSWORD` | optional | Your Spond login, for [Spond](#7-sports-schedules-and-spond). The account must have a password; sign-in with Google or Apple alone won't work. |
 | `OPENAI_API_KEY` | optional | Lets AI suggest icons for events that no keyword rule matches. |
@@ -240,7 +239,7 @@ Open `https://<id>.lambda-url.eu-west-1.on.aws/admin` on your phone and log in w
 | **Familie** | Each person's name, letter, colour, birthday and the words that refer to them. Pets can be added as type "dyr". For children, the school grade and groups ("gruppe Sild"), which help Claude work out who a letter is about. Grades are set for a school year and move up automatically every August. |
 | **Regler** | Keyword rules, such as "korps" → music icon + Nora, or "middag:" → food icon. |
 | **Abonnement** | Calendar feeds (any `.ics` address), Spond groups, and a clean-up tool for events left behind by other calendar syncs. |
-| **Visning** | Layout options (see [Display options](#display-options)), birthdays and special days on or off, when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
+| **Visning** | Layout options (see [Display options](#display-options)), birthdays and special days on or off, red public holidays (and julaften / nyttårsaften), when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
 
 Every save keeps the previous version in `config/history/` in S3.
 
