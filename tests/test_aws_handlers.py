@@ -543,3 +543,32 @@ def test_ingest_uses_claude_api_when_key_is_set(aws, monkeypatch):
     out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf"}, None)
     assert out["ok"] and keys == ["sk-ant-test"]
     assert [r["model"] for r in fake_ai.requests] == ["claude-sonnet-5-5"]
+
+
+def test_render_syncs_calendar_feeds_then_throttles(aws, monkeypatch):
+    import school.calendar_sync as cs
+    from test_feeds import ICS, Session
+    s3, ssm = aws
+    _put_params(ssm, {"CALENDAR_FEEDS": "webcal://ics.example.com/norway.ics | Christian",
+                      "GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group"})
+    session, fetched = Session(), []
+
+    class R:
+        text = ICS
+        def raise_for_status(self):
+            pass
+    monkeypatch.setattr(requests, "get", lambda url, **kw: (fetched.append(url), R())[1])
+    monkeypatch.setattr(cs, "session_from_service_account", lambda info: session)
+    errors = []
+    first = render_handler.sync_calendar_feeds(s3, BUCKET, errors)
+    assert errors == [] and fetched == ["https://ics.example.com/norway.ics"]
+    assert list(first.values())[0]["created"] >= 2
+    assert any(b["summary"] == "Norge - Danmark Christian" for b in session.posted)
+    assert render_handler.sync_calendar_feeds(s3, BUCKET, errors) == {"skipped": "synced recently"}
+    assert len(fetched) == 1
+    assert render_handler.sync_calendar_feeds(s3, BUCKET, errors, force=True) is not None   # force bypasses
+
+
+def test_render_without_feeds_config_does_nothing(aws):
+    s3, _ssm = aws
+    assert render_handler.sync_calendar_feeds(s3, BUCKET, []) is None

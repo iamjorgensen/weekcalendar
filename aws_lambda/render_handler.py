@@ -172,6 +172,65 @@ def render(main, mappings, data, days, errors):
     return img
 
 
+FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
+FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
+
+
+def sync_calendar_feeds(s3, bucket, errors, force=False):
+    """
+    Copy subscribed calendar feeds (CALENDAR_FEEDS) into the family calendar, at most
+    every FEED_SYNC_HOURS (or when the config changed). Never fails the render.
+    Returns a short status dict for meta.json, or None when nothing was done.
+    """
+    import hashlib
+    params, _missing = aws_common.get_parameters(["CALENDAR_FEEDS", "GOOGLE_SA_JSON", "CALENDAR_ID"])
+    spec = params.get("CALENDAR_FEEDS") or ""
+    if not spec.strip():
+        return None
+    if not params.get("GOOGLE_SA_JSON") or not params.get("CALENDAR_ID"):
+        errors.append("feeds: GOOGLE_SA_JSON/CALENDAR_ID mangler")
+        return None
+    spec_hash = hashlib.sha1(spec.encode("utf-8")).hexdigest()
+    state = {}
+    try:
+        state = json.loads(s3.get_object(Bucket=bucket, Key=FEEDS_STATE_KEY)["Body"].read())
+    except Exception:
+        pass
+    if not force and state.get("spec") == spec_hash and time.time() - state.get("at", 0) < FEED_SYNC_HOURS * 3600:
+        return {"skipped": "synced recently"}
+
+    import requests
+    from school import feeds
+    from school.calendar_sync import session_from_service_account
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Europe/Oslo")).date()
+    except Exception:
+        today = datetime.now().date()
+
+    result = {}
+    try:
+        session = session_from_service_account(json.loads(params["GOOGLE_SA_JSON"]))
+    except Exception as e:
+        errors.append(f"feeds: {e}")
+        return None
+    for url, names in feeds.parse_feeds(spec):
+        fid = feeds.feed_id(url)
+        try:
+            r = requests.get(url, timeout=15, headers={"User-Agent": "weekcalendar/1.0"})
+            r.raise_for_status()
+            result[fid] = feeds.sync_feed(session, params["CALENDAR_ID"], r.text, names, fid, today)
+        except Exception as e:
+            logger.exception("Feed sync failed for %s", fid)
+            errors.append(f"feed {fid}: {e}")
+    try:
+        s3.put_object(Bucket=bucket, Key=FEEDS_STATE_KEY,
+                      Body=json.dumps({"at": time.time(), "spec": spec_hash, "result": result}).encode("utf-8"))
+    except Exception:
+        pass
+    return result
+
+
 def handler(event, context):
     t0 = time.time()
     event = event or {}
@@ -182,6 +241,15 @@ def handler(event, context):
     missing = load_config()
     s3 = aws_common.client("s3")
     known_icons = restore_caches(s3, bucket)
+
+    # Subscribed calendars (e.g. the national team's fixtures) go into the family
+    # calendar before we read it, so new matches show up in this same render.
+    feeds_status = None
+    try:
+        feeds_status = sync_calendar_feeds(s3, bucket, errors, force=bool(event.get("force_feeds")))
+    except Exception as e:
+        logger.exception("Feed sync crashed")
+        errors.append(f"feeds: {e}")
 
     (main, data_provider, mappings), first_import = import_app()
     if not first_import:
@@ -225,6 +293,7 @@ def handler(event, context):
         "missing_params": sorted(missing),
         "errors": errors,
         "battery": battery,
+        "feeds": feeds_status,
     }
     s3.put_object(Bucket=bucket, Key=META_KEY, Body=json.dumps(meta, indent=1).encode("utf-8"),
                   ContentType="application/json", CacheControl="no-store")
