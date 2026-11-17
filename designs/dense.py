@@ -292,17 +292,24 @@ def collapse_repeats(days, min_run=3):
     return out
 
 
-def _tomorrow(img, draw, day, y, bottom):
+def _tomorrow(img, draw, day, y, bottom, label="I morgen"):
     """'I morgen' block in the black panel. Returns True if drawn."""
     x0, x1 = 18, HERO_W - 16
     if not day["events"] or bottom - y < 56:
+        return False
+    # Only show the block if ALL of tomorrow's events fit: the day list then skips
+    # tomorrow, so a partial block would hide events.
+    kw = dict(size=15, icon_size=16, chip_d=16, max_lines=1, pad=3)
+    need = 4 + 8 + cap_height(draw, f_bold(15)) + 8 + sum(
+        event_row(img, draw, x0, 0, x1 - x0, ev, draw_it=False, **kw) for ev in day["events"])
+    if y + need > bottom:
         return False
     y += 4
     draw.rectangle([x0, y, x1, y], fill=WHITE)
     y += 8
     fh = f_bold(15)
     d = day["date"]
-    draw_text_top(draw, (x0, y), f"I morgen · {WEEKDAYS_SHORT[d.weekday()]} {d.day}.", fh, YELLOW)
+    draw_text_top(draw, (x0, y), f"{label} · {WEEKDAYS_SHORT[d.weekday()]} {d.day}.", fh, YELLOW)
     y += cap_height(draw, fh) + 8
     kw = dict(size=15, icon_size=16, chip_d=16, max_lines=1, pad=3)
     shown = 0
@@ -372,7 +379,21 @@ def render(data, opts=None):
         opts = {k: True for k in raw.split(",") if k}
     img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
-    days = data["days"]
+    days = [dict(d) for d in data["days"]]
+    if not opts.get("advice"):
+        for d in days[:2]:
+            if d.get("weather") and d["weather"].get("advice"):
+                d["weather"] = {k: v for k, v in d["weather"].items() if k != "advice"}
+
+    # Evening mode: after EVENING_HOUR the big panel shows tomorrow
+    evening = False
+    now = data.get("now")
+    if opts.get("evening") and now is not None and len(days) > 1:
+        if now.hour >= int(os.environ.get("EVENING_HOUR", "17")):
+            evening = True
+            days = days[1:]
+            days[0] = dict(days[0], heading="I morgen")
+
     if opts.get("collapse"):
         days = collapse_repeats(days)
 
@@ -392,7 +413,8 @@ def render(data, opts=None):
 
     list_days = days[1:]
     if opts.get("tomorrow") and len(days) > 1:
-        if _tomorrow(img, draw, days[1], y_end, H - 26 - reserve):
+        if _tomorrow(img, draw, days[1], y_end, H - 26 - reserve,
+                     label="Overmorgen" if evening else "I morgen"):
             list_days = days[2:]
 
     gap = 12

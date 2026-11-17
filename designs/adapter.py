@@ -124,6 +124,54 @@ def periods_from_hourly(hourly, today):
     return out
 
 
+def morning_conditions(hourly, day):
+    """(temp, precip_mm, symbols) for 07-09 local time on `day`, or (None, 0, []) without data."""
+    temps, precip, symbols = [], 0.0, []
+    for h in hourly or []:
+        try:
+            t = datetime.fromisoformat(str(h.get("time")))
+        except Exception:
+            continue
+        if OSLO is not None and t.tzinfo is not None:
+            t = t.astimezone(OSLO)
+        if t.date() != day or not (7 <= t.hour <= 9):
+            continue
+        tv = _num(h.get("temp"))
+        if tv is not None:
+            temps.append(tv)
+        precip += _num(h.get("precip_next_1h") if h.get("precip_next_1h") is not None else h.get("precip")) or 0.0
+        if h.get("symbol"):
+            symbols.append(str(h["symbol"]))
+    if not temps:
+        return None, 0.0, []
+    return sum(temps) / len(temps), precip, symbols
+
+
+def clothing_advice(temp, precip_morning, symbols, day_symbol="", day_precip=0.0, tmin=None):
+    """Short Norwegian clothing advice for the kids' school morning."""
+    if temp is None:
+        return ""
+    sym = " ".join(symbols + [str(day_symbol or "")]).lower()
+    snow = any(k in sym for k in ("snow", "snø", "sleet", "sludd"))
+    wet = precip_morning >= 0.3 or any(k in sym for k in ("rain", "regn", "byge", "shower", "drizzle"))
+    if temp <= -8:
+        txt = "Vinterdress, ull, lue og votter"
+    elif temp <= 0:
+        txt = "Vinterdress + vintersko" if snow else "Vinterdress, lue og votter"
+    elif temp <= 5:
+        txt = "Regntøy over varme klær, lue" if wet else ("Vinterdress + vintersko" if snow else "Boblejakke, lue og votter")
+    elif temp <= 10:
+        txt = "Regntøy og støvler" if wet else "Jakke og lue"
+    elif temp <= 15:
+        txt = "Regnjakke og støvler" if wet else "Lett jakke"
+    else:
+        txt = "Regnjakke" if wet else "T-skjorte og shorts?"
+    low = min(x for x in (temp, tmin) if x is not None)
+    if -4 <= low <= 2 and (wet or snow or (day_precip or 0) >= 0.5):
+        txt += " · Glatt?"
+    return "Klær: " + txt
+
+
 def sun_times(day, lat, lon, tz=OSLO):
     """Sunrise/sunset as 'HH:MM' local time (NOAA approximation). None in polar day/night."""
     n = day.timetuple().tm_yday
@@ -205,9 +253,19 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
         events = sorted(by_date.get(d, []), key=lambda e: (e["sort_time"] != "", e["sort_time"]))
         out_days.append({"date": d, "events": events, "weather": _weather_for(weather_by_date.get(d))})
 
+    hourly = data.get("hourly_today")
+    for day in out_days[:2]:   # today and tomorrow (evening mode)
+        w = day["weather"]
+        if w is None:
+            continue
+        w["periods"] = periods_from_hourly(hourly, day["date"])
+        mt, mp, ms = morning_conditions(hourly, day["date"])
+        if mt is not None:
+            w["morning"] = round(mt)
+        w["advice"] = clothing_advice(mt, mp, ms, w.get("symbol"), w.get("precip"), w.get("tmin"))
+
     w0 = out_days[0]["weather"]
     if w0 is not None:
-        w0["periods"] = periods_from_hourly(data.get("hourly_today"), today)
         la = lat if lat is not None else DEFAULT_LAT
         lo = lon if lon is not None else DEFAULT_LON
         try:
@@ -220,4 +278,4 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
     battery = data.get("battery")
     if not isinstance(battery, int) or not 0 <= battery <= 100:
         battery = None
-    return {"today": today, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery}
+    return {"today": today, "now": now, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery}

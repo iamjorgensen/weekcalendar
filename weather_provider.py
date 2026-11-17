@@ -345,8 +345,9 @@ def get_forecast_json(lat=DEFAULT_LAT, lon=DEFAULT_LON, days=DEFAULT_DAYS, user_
             except Exception:
                 continue
             dt_local = dt.astimezone(LOCAL_TZ) if LOCAL_TZ else dt.astimezone()
-            day_key = _day_key_06_to_06(dt_local)
-            if day_key == today.strftime("%Y-%m-%d"):
+            # today and tomorrow (calendar days): the design shows morning/day/evening
+            # for today, and for tomorrow in evening mode / clothing advice
+            if dt_local.date() in (today, today + timedelta(days=1)):
                 filtered.append(h)
         # optionally trim/convert values to simple types
         result["hourly_today"] = filtered if keep_debug_hourly else filtered

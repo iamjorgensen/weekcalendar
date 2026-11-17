@@ -117,3 +117,54 @@ def test_dense_options_render_and_collapse_label(monkeypatch):
     monkeypatch.setenv("DESIGN_OPTIONS", "collapse+month+tomorrow")
     img = dense.render(dd)
     assert img.size == (800, 480)
+
+
+def test_clothing_advice_rules():
+    from designs.adapter import clothing_advice
+    assert clothing_advice(None, 0, []) == ""
+    assert clothing_advice(-10, 0, ["clearsky_day"]) == "Klær: Vinterdress, ull, lue og votter"
+    assert clothing_advice(-3, 0, ["cloudy"]) == "Klær: Vinterdress, lue og votter"
+    assert clothing_advice(-1, 1.0, ["snow"]).startswith("Klær: Vinterdress + vintersko")
+    assert "Glatt?" in clothing_advice(1, 0.8, ["lightrain"])            # rain around zero
+    assert clothing_advice(3, 0, ["cloudy"]) == "Klær: Boblejakke, lue og votter"
+    assert clothing_advice(8, 1.2, ["rain"]) == "Klær: Regntøy og støvler"
+    assert clothing_advice(18, 0, ["clearsky_day"]) == "Klær: T-skjorte og shorts?"
+
+
+def test_adapter_today_and_tomorrow_get_periods_and_advice():
+    data = _data()
+    tomorrow = NOW.date() + timedelta(days=1)
+    data["hourly_today"] += [dict(time=datetime(tomorrow.year, tomorrow.month, tomorrow.day, h, tzinfo=OSLO).isoformat(),
+                                  temp=-6.0, symbol="clearsky_day") for h in range(6, 23)]
+    dd = to_design_data(data, days=7, now=NOW)
+    w0, w1 = dd["days"][0]["weather"], dd["days"][1]["weather"]
+    assert w0["periods"] and w1["periods"] and w1["periods"][0][2] == -6
+    assert w1["morning"] == -6 and w1["advice"] == "Klær: Vinterdress + vintersko"   # daily symbol is "Snø"
+    assert w0["advice"].startswith("Klær: ")
+
+
+def test_evening_mode_shows_tomorrow(monkeypatch):
+    from designs import dense
+    import designs.common as common
+    evening = datetime(2026, 11, 17, 18, 5, tzinfo=OSLO)
+    dd = to_design_data(_data(), days=7, now=evening)
+    seen = []
+    real = dense._today
+    monkeypatch.setattr(dense, "_today", lambda img, draw, day, *a, **k: (seen.append(day), real(img, draw, day, *a, **k))[1])
+    dense.render(dd, {"evening": True, "advice": True})
+    assert seen[-1]["date"] == evening.date() + timedelta(days=1) and seen[-1]["heading"] == "I morgen"
+    seen.clear()
+    dense.render(dd, {"evening": False})
+    assert seen[-1]["date"] == evening.date() and "advice" not in (seen[-1]["weather"] or {})
+
+
+def test_tomorrow_block_only_when_all_events_fit(monkeypatch):
+    from designs import dense
+    dd = to_design_data(_data(), days=7, now=NOW)
+    dd["days"][1]["events"] = [{"time": f"{8 + i:02d}:00", "sort_time": f"{8 + i:02d}:00", "title": f"Ting {i}",
+                                "icon": None, "people": [], "is_holiday": False} for i in range(12)]
+    shown = []
+    monkeypatch.setattr(dense, "_day_section",
+                        lambda img, draw, x, y, w, day, measure=False, morning=False: (shown.append(day["date"]), 40)[1])
+    dense.render(dd, {"tomorrow": True})
+    assert dd["days"][1]["date"] in shown   # too many to fit -> tomorrow stays in the day list
