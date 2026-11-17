@@ -198,6 +198,9 @@ def test_evening_can_keep_upcoming_instead_of_energy():
     count = lambda im: sum(1 for x in range(551, 795) for y in range(300, 476) if im.getpixel((x, y)) == BLUE)
     assert count(dense.render(data, opts)) > 200
     assert count(dense.render(data, dict(opts, evening_upcoming=True))) == 0
+    morning = dict(data, now=datetime(2026, 11, 17, 7, 0))
+    assert count(dense.render(morning, opts)) == 0                            # evening only by default
+    assert count(dense.render(morning, dict(opts, energy_allday=True))) > 200  # or all day
 
 
 def test_tibber_admin_test_endpoint(aws, monkeypatch):
