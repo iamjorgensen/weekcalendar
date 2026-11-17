@@ -567,6 +567,18 @@ def _energy(img, draw, x, y, w, bottom, energy, car=None):
         draw_text_top(draw, (x, y), "mot samme periode i fjor" if energy.get("against", "i fjor") == "i fjor"
                       else f"mot {energy['against']}", f_tiny(12), BLACK)
     y += 20
+    yc = energy.get("year_cost")
+    if yc and bottom - y >= 36 + 18 + 40:      # only if the chart still gets 40 px below it
+        kr = lambda v: f"{v:,} kr".replace(",", " ")     # noqa: E731
+        y += 2
+        draw_text_top(draw, (x, y), f"Hittil i år: {kr(yc['cost'])}", f, BLACK)
+        if yc.get("estimate"):
+            est = f"ca. {kr(round(yc['estimate'], -2))}"
+            draw_text_top(draw, (x + w - text_w(draw, est, f_bold(15)), y), est, f_bold(15), BLACK)
+            note = f"anslag hele {yc['year']}"
+            draw_text_top(draw, (x + w - text_w(draw, note, f_tiny(12)), y + 18), note, f_tiny(12), BLACK)
+        draw_text_top(draw, (x, y + 18), "Norgespris, uten nettleie", f_tiny(12), BLACK)
+        y += 38
     this, last = energy.get("days") or [], energy.get("last_year") or []
     vals = [v for v in this + last if v]
     ch = min(70, bottom - y - 18)

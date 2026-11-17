@@ -92,7 +92,7 @@ Small yellow lines under the weather add:
 - countdowns to your own events: put ⏳ in an event's title in Google Calendar ("⏳ Syden") and the frame counts down to it ("64 dager til Syden");
 - "Fullmåne i natt" and "Nordlys mulig i kveld (Kp 6)" (NOAA's forecast).
 
-With a Tibber token, the **evening view** shows "Strøm og bil" under the month calendar instead of "Kommer": electricity for the last 30 days compared with the same days last year (−11 %), as a bar chart, and the car's battery when it is available; the car's % is also shown next to the frame's battery.
+With a Tibber token, the **evening view** shows "Strøm og bil" under the month calendar instead of "Kommer": electricity for the last 30 days compared with the same days last year (−11 %), as a bar chart, and the car's battery when it is available; the car's % is also shown next to the frame's battery. When there is room, it also shows the electricity cost so far this year and an estimate for the whole year, at the Norgespris rate (50 øre/kWh incl. VAT up to 5 000 kWh per month, spot price above; set in `NORGESPRIS` in `aws_lambda/tibber.py`). Nettleie and Tibber's monthly fee are not included. The rest of the year is estimated from last year's consumption on the same dates.
 
 The month column can also show **"Denne uka"**: chores that rotate weekly between the people you pick ("Oppvask: Emil · Søppel: Nora"). When the battery is below 15 %, the frame shows "Bytt batteri!".
 

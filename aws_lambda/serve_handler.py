@@ -369,7 +369,7 @@ def _admin_api(path, method, event, headers):
             homes = [h.get("appNickname") or "hjem" for h in (data.get("viewer") or {}).get("homes") or []]
             return _json(200, {"homes": homes, "days_with_data": len(per_day),
                                "first_day": min(per_day).isoformat() if per_day else None,
-                               "summary": tibber.summary(per_day, _date.today()),
+                               "summary": tibber.summary(per_day, _date.today(), per_day_cost=tibber.daily_cost(data)),
                                "vehicle_types": tibber.vehicle_types(params["TIBBER_TOKEN"])})
         except tibber.TibberError as e:
             return _json(502, {"error": str(e)})
