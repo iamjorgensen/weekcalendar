@@ -128,7 +128,8 @@ def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, ext
     for text in extra_lines or ():    # countdowns, clock change, dinner question (may take two lines)
         from designs.common import wrap
         f_ln = f_body(14)
-        for part in wrap(draw, text, f_ln, x1 - x0, 2 if text.startswith("Middagsspørsmål") else 1):
+        two = text.startswith("Middagsspørsmål") or "farevarsel" in text
+        for part in wrap(draw, text, f_ln, x1 - x0, 2 if two else 1):
             draw_text_top(draw, (x0, y), part, f_ln, YELLOW)
             y += 19
         y += 1
@@ -621,8 +622,10 @@ def render(data, opts=None):
         days = [dict(d, events=[e for e in d["events"] if not e["title"].lower().startswith("husk denne uka")])
                 for d in days]
 
-    # Birthdays, holidays and other special days ("moments")
+    # Birthdays, holidays and other special days ("moments"); weather warnings always
     banner, extra = None, []
+    from designs import moments as _mo
+    warn_banner = _mo.warning_banner(data.get("warnings"), days[0]["date"])
     if opts.get("moments"):
         from designs import moments
         people = data.get("people") or []
@@ -636,6 +639,11 @@ def render(data, opts=None):
                               evening=evening)
         days = moments.birthday_events(days, people, skip=days[0]["date"] if banner and banner.get("birthday")
                                        else None)
+    # a red warning beats everything, an orange one everything but a birthday
+    if warn_banner and (warn_banner["warning_level"] == 3 or not (banner and banner.get("birthday"))):
+        banner = warn_banner
+    extra = (_mo.warning_lines(data.get("warnings"), days[0]["date"],
+                               skip_banner=banner if banner is warn_banner else None) + extra)[:2]
 
     if opts.get("collapse"):
         days = collapse_repeats(days)

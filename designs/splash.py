@@ -47,9 +47,8 @@ def _decorate(draw, rnd, w, bg, fg, decor, candles=0):
     if decor == "party":
         _confetti(draw, rnd, bg, fg, (6, 24, w - 8, h - 16), 34)
         _bunting(draw, w, [c for c in (RED, BLUE, GREEN, YELLOW, WHITE, BLACK) if c != bg], text_on(bg))
-    elif decor == "flags":
-        _confetti(draw, rnd, bg, fg, (6, 24, w - 8, h - 16), 26)
-        _bunting(draw, w, [WHITE, BLUE, RED] if bg != BLUE else [WHITE, RED, YELLOW], WHITE)
+    elif decor == "flags":      # 17. mai, match day: a clean row of flags, no confetti
+        _bunting(draw, w, [c for c in (WHITE, BLUE, RED) if c != bg], WHITE)
     elif decor == "snow":
         for _ in range(60):
             x, y, r = rnd.randint(4, w - 4), rnd.randint(4, h - 14), rnd.choice([1, 2, 2, 3])
@@ -100,7 +99,7 @@ def draw_banner(img, draw, w, b, date_line, seed=0):
     rnd = random.Random(seed)
     draw.rectangle([0, 0, w, BANNER_H - 8], fill=bg)
     _decorate(draw, rnd, w, bg, fg, b["decor"])
-    boxed = b["decor"] in ("party", "flags", "eggs", "fireworks", "snow", "leaves")
+    boxed = b["decor"] in ("party", "eggs", "fireworks", "snow", "leaves")
     x0 = 16
 
     title = b["title"]
@@ -129,9 +128,10 @@ def draw_banner(img, draw, w, b, date_line, seed=0):
         draw_text_top(draw, (x0 + bw + 12, y_big + bh - cap_height(draw, f_s)), small, f_s, fg)
     else:
         f_s = f_bold(16)
-        while text_w(draw, small, f_s) > w - 2 * x0 and f_s.size > 12:
-            f_s = f_bold(f_s.size - 1)
         sy = y_big + bh + 12
+        s_room = w - 2 * x0 - (80 if has_side and sy < y_big + 54 else 0)   # keep clear of the icon
+        while text_w(draw, small, f_s) > s_room and f_s.size > 12:
+            f_s = f_bold(f_s.size - 1)
         if boxed:
             draw.rectangle([x0 - 4, y_big - 4, x0 + bw + 4, y_big + bh + 4], fill=bg)
             if small:

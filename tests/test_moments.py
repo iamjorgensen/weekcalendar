@@ -110,3 +110,40 @@ def test_config_birthday_validation():
     with pytest.raises(config_store.ConfigError):
         config_store.validate({"people": [{"name": "X", "birthday": "28.11.2022"}]})
     assert config_store.people_for_design(out)[0]["celebrate"] is True
+
+
+ALERTS = {"type": "FeatureCollection", "features": [
+    {"properties": {"event": "gale", "eventAwarenessName": "Kuling", "awareness_level": "2; yellow; Moderate",
+                    "riskMatrixColor": "Yellow", "title": "Kuling, gult nivå"},
+     "when": {"interval": ["2026-11-17T06:00:00+00:00", "2026-11-17T17:00:00+00:00"]}},
+    {"properties": {"event": "rainFlood", "eventAwarenessName": "Styrtregn", "awareness_level": "3; orange; Severe",
+                    "riskMatrixColor": "Orange"},
+     "when": {"interval": ["2026-11-18T03:00:00+00:00", "2026-11-19T12:00:00+00:00"]}}]}
+
+
+def test_met_alerts_parse_and_frame():
+    import met_alerts
+    ws = met_alerts.parse(ALERTS)
+    assert [w["name"] for w in ws] == ["Styrtregn", "Kuling"] and ws[0]["level"] == 2 and ws[1]["color"] == "yellow"
+    today = date(2026, 11, 17)
+    b = moments.warning_banner(ws, today)
+    assert b["title"] == "Farevarsel!" and b["big"] == "Styrtregn" and b["bg"] == YELLOW
+    assert b["small"] == "Oransje nivå · fra i morgen"
+    assert moments.warning_lines(ws, today, skip_banner=b) == [
+        "Fare for oversvømmelse", "Gult farevarsel: Kuling til kl 18 – sikre løse ting ute"]
+    assert moments.warning_banner([ws[1]], today) is None                 # yellow: a line only
+    assert moments.active_warnings(ws, date(2026, 11, 25)) == []          # over
+
+
+def test_red_warning_beats_birthday_orange_does_not():
+    import met_alerts
+    ws = met_alerts.parse(ALERTS)
+    d = date(2026, 11, 18)
+    base = {"today": d, "now": datetime(2026, 11, 18, 6, 30), "updated": "06:30", "battery": 80,
+            "people": [dict(PEOPLE[0], birthday="2016-11-18")], "dinner_question": "",
+            "days": [day(d)] + [day(date(2026, 11, 18 + i)) for i in range(1, 6)]}
+    img = dense.render(dict(base, warnings=ws), {"moments": True})
+    assert img.getpixel((40, 60)) == YELLOW                               # Nora's birthday (yellow) wins over orange
+    red = [dict(ws[0], level=3, color="red")]
+    img = dense.render(dict(base, warnings=red), {"moments": True})
+    assert img.getpixel((5, 60)) == RED                                   # red warning banner

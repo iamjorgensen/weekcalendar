@@ -275,6 +275,19 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
     return result
 
 
+def weather_warnings(errors):
+    """MET Norway's current warnings (farevarsler) for LAT/LON; [] if unavailable."""
+    lat, lon = os.environ.get("LAT"), os.environ.get("LON")
+    if not lat or not lon:
+        return []
+    try:
+        import met_alerts
+        return met_alerts.fetch(lat, lon)
+    except Exception as e:
+        logger.warning("MET alerts failed: %s", e)    # best effort: no warning shown, not an error
+        return []
+
+
 DINNER_KEY = "log/dinner.json"
 
 
@@ -403,6 +416,7 @@ def handler(event, context):
         import config_store
         data["people"] = config_store.people_for_design(cfg)
     data["dinner_question"] = dinner_question(s3, bucket)
+    data["warnings"] = weather_warnings(errors)
 
     battery = event.get("battery")
     if not isinstance(battery, int) or not 0 <= battery <= 100:

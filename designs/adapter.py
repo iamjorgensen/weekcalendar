@@ -281,4 +281,5 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
     if not isinstance(battery, int) or not 0 <= battery <= 100:
         battery = None
     return {"today": today, "now": now, "days": out_days, "updated": now.strftime("%H:%M"), "battery": battery,
-            "people": data.get("people") or [], "dinner_question": data.get("dinner_question") or ""}
+            "people": data.get("people") or [], "dinner_question": data.get("dinner_question") or "",
+            "warnings": data.get("warnings") or []}

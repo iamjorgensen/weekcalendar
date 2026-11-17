@@ -314,3 +314,78 @@ def lines(days, people=(), now=None, dinner_question="", evening=False, max_line
         out.append("Ingen planer i dag – hva med en tur?")
 
     return out[:max_lines]
+
+
+# ------------------------------------------------------------------ weather warnings (MET)
+LEVEL_NO = {1: "Gult", 2: "Oransje", 3: "Rødt"}
+
+
+def _when(w, today, now=None):
+    """'i dag', 'til kl 18', 'fra i morgen', 'fra fre' - relative to the panel's day."""
+    from datetime import datetime
+    try:
+        start = datetime.fromisoformat(w["start"]) if w.get("start") else None
+        end = datetime.fromisoformat(w["end"]) if w.get("end") else None
+    except ValueError:
+        return ""
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Europe/Oslo")
+        start, end = (x.astimezone(tz) if x else None for x in (start, end))
+    except Exception:
+        pass
+    if start and start.date() > today:
+        n = (start.date() - today).days
+        return "fra i morgen" if n == 1 else f"fra {WEEKDAY_SHORT[start.weekday()]}"
+    if end and end.date() == today:
+        return f"til kl {end:%H}"
+    if end and end.date() > today:
+        return f"til {WEEKDAY_SHORT[end.weekday()]} kl {end:%H}" if (end.date() - today).days < 7 else ""
+    return ""
+
+
+def active_warnings(warnings, today):
+    """Warnings that are not over before the panel's day (within the next 3 days)."""
+    out = []
+    for w in warnings or []:
+        try:
+            end = date.fromisoformat(w["end"][:10]) if w.get("end") else None
+            start = date.fromisoformat(w["start"][:10]) if w.get("start") else None
+        except ValueError:
+            continue
+        if end and end < today:
+            continue
+        if start and (start - today).days > 2:
+            continue
+        out.append(w)
+    return out
+
+
+def warning_banner(warnings, today):
+    """Orange and red warnings get the banner (red always, orange unless it is someone's birthday)."""
+    ws = [w for w in active_warnings(warnings, today) if w.get("level", 1) >= 2]
+    if not ws:
+        return None
+    w = ws[0]
+    when = _when(w, today)
+    small = f"{LEVEL_NO[w['level']]} nivå" + (f" · {when}" if when else "")
+    b = _b("Farevarsel!", w["name"], small, "alert-circle",
+           RED if w["level"] == 3 else YELLOW, "none", fg=WHITE if w["level"] == 3 else BLACK)
+    b["warning_level"] = w["level"]
+    return b
+
+
+def warning_lines(warnings, today, skip_banner=None):
+    """Yellow warnings (and any not shown in the banner) as short lines."""
+    out = []
+    for w in active_warnings(warnings, today):
+        if skip_banner and w["name"] == skip_banner.get("big"):
+            if w.get("tip"):                    # the banner has no room for the advice
+                out.append(w["tip"][0].upper() + w["tip"][1:])
+            continue
+        when = _when(w, today)
+        text = f"{LEVEL_NO.get(w.get('level', 1), 'Gult')} farevarsel: {w['name']}" + (f" {when}" if when else "")
+        if w.get("tip"):
+            text += f" – {w['tip']}"
+        out.append(text)
+    return out[:2]

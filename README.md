@@ -78,6 +78,7 @@ On a birthday the top of the black panel becomes a tall banner in that person's 
 | Days off | Planleggingsdag and other days off: "Fri i dag! Nora og Emil har fri" |
 | Other days | Morsdag, farsdag, fastelavn, Lucia, Sankthans and Halloween |
 | Match day | A fixture from a calendar feed: "Kampdag! 20:45" |
+| Weather warning | MET Norway's farevarsler for your location: orange and red get the banner ("Farevarsel! Styrtregn"), yellow a line ("Gult farevarsel: Kuling til kl 18 – sikre løse ting ute"). A red warning beats everything, an orange one everything except a birthday. |
 
 Small yellow lines under the weather add:
 - countdowns, such as "3 dager til Nora 10 år", "4 dager til høstferie" and "14 dager til jul";
