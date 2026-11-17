@@ -31,3 +31,6 @@ __pycache__/
 output.png
 *.tmp
 frame/secrets.py
+
+# frame secrets (Wi-Fi password, frame token)
+secrets.py

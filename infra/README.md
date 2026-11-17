@@ -159,7 +159,7 @@ eu-west-1 prices, about 1 render per day (frame wake-up) plus refresh-button pre
 | Lambda (render, 1 GB, ~15 s x 30) | ~450 GB-s | $0.01 (free tier: 400 000 GB-s) |
 | Lambda (serve, 256 MB, ~100 requests) | negligible | $0.00 |
 | Function URL | included in Lambda | $0.00 |
-| ECR (render image, ~200–300 MB) | per stored image | ~$0.03 (old images from earlier deploys add ~$0.03 each; delete old ones in ECR occasionally) |
+| ECR (render image, ~200–300 MB) | per stored image | ~$0.03 (the deploy sets a lifecycle rule that keeps the 5 newest images) |
 | S3 (< 1 MB, a few hundred requests) | | < $0.01 |
 | SSM Parameter Store (standard) + KMS `aws/ssm` key | | $0.00 |
 | EventBridge Scheduler (only if `EnableSchedule=true`) | | $0.00 |
@@ -176,24 +176,6 @@ eu-west-1 prices, about 1 render per day (frame wake-up) plus refresh-button pre
 
 ---
 
-## Phase 2 (design only, not built)
+## Admin page, school letters, feeds and Spond
 
-### A. Configurable sources
-
-- **DynamoDB table `sources`** (on-demand, ~free): one item per source, e.g. `{id, type: "google_calendar" | "ics" | "movar" | "school_plan", name, config: {...}, enabled, color, child}`. Secrets stay in SSM; items reference them by parameter name.
-- The render function reads enabled sources from the table instead of fixed env vars, with the current SSM parameters as the default when the table is empty.
-- **Small admin web page**: a static page served by the serve function (`GET /admin`) plus JSON endpoints (`/api/sources`, `/api/events`). Auth: a separate `ADMIN_TOKEN`, or Cognito if more people need access. Lets you add/enable/disable sources and press "render now".
-
-### B. School weekly letters ("ukebrev") -> events
-
-The letters come from the school app, so ingestion starts on the phone:
-
-1. **iPhone Shortcut in the Share Sheet** ("Send to calendar"): in the school app, share the PDF / screenshot / text -> the Shortcut `POST`s it to `<url>upload` with header `X-Run-Token` (body = file, `Content-Type` from the file). The serve function checks the token and stores it in S3 under `inbox/<timestamp>-<id>.<ext>`, returns 202.
-2. **S3 event on `inbox/`** triggers a new **extraction Lambda**: PDF -> text (or the image directly), sent to an LLM with vision and a strict JSON schema. Output: a list of events
-   `{date, time, title, kind: closed | early_finish | trip | gym | bring | special, child, notes}`,
-   saved as `extracted/<id>.json` with status `pending_review`.
-3. **Which child:** the letter names the grade ("6. trinn"). A small config (SSM parameter or DynamoDB item) maps each child to their grade **as of a school year**, e.g. `{"name": "<child>", "grade_2025": 5}`; the current grade is computed from the date and advances every August, so nobody has to edit it yearly. Letters for a grade with no matching child are flagged in review.
-4. **Review in the admin page:** pending extractions are listed with the original file next to them; edit/approve/reject. Approved events go into a DynamoDB `events` table that the render function merges with the calendar (source type `school_plan`).
-5. Cost: a few letters a week -> pennies of LLM usage; Lambda/S3/DynamoDB stay in the free tier.
-
-**Optional later alternative:** SES email receiving (that is why the region is eu-west-1) writing to the same `inbox/` prefix, for schools that send the letters by email. The extraction and review steps stay the same.
+These are built and described in the main [README](../README.md): the admin page (`/admin`), school letters from the phone (`/upload`, read by Claude in the ingest function), calendar feeds and Spond. They add three parameters here: `ADMIN_TOKEN`, `GOOGLE_SA_JSON` and `ANTHROPIC_API_KEY` (plus `SPOND_EMAIL` / `SPOND_PASSWORD` if you use Spond).
