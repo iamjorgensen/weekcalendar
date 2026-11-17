@@ -13,7 +13,8 @@ API = "https://api.tibber.com/v1-beta/gql"
 CONSUMPTION_Q = """{ viewer { homes { id appNickname
   consumption(resolution: DAILY, last: 100%s) { pageInfo { startCursor hasPreviousPage }
     nodes { from consumption } } } } }"""
-MAX_PAGES = 5        # 5 x 100 days: enough for "the same 30 days last year"
+MAX_PAGES = 15       # Tibber returns about a month per page: 15 pages reach well over a year back
+CACHE_KEY = "cache/tibber_daily.json"
 
 
 class TibberError(RuntimeError):
@@ -80,14 +81,14 @@ def _year_before(d):
         return d.replace(year=d.year - 1, day=28)
 
 
-def fetch_history(token):
+def fetch_history(token, max_pages=MAX_PAGES):
     """All homes' daily consumption, paging backwards (the API may return only part per request).
     Returns data shaped like a single query result."""
     first = query(token, CONSUMPTION_Q % "")
     homes = (first.get("viewer") or {}).get("homes") or []
     for home in homes:
         cons = home.get("consumption") or {}
-        for _ in range(MAX_PAGES - 1):
+        for _ in range(max_pages - 1):
             info = cons.get("pageInfo") or {}
             if not info.get("hasPreviousPage") or not info.get("startCursor"):
                 break
@@ -102,8 +103,29 @@ def fetch_history(token):
     return first
 
 
-def energy(token, today):
-    return summary(daily(fetch_history(token)), today)
+def energy(token, today, s3=None, bucket=None):
+    """The summary for the frame. With S3, the daily history is kept in cache/tibber_daily.json: the
+    full history is fetched once (and again if it is too short), afterwards only the newest page."""
+    if s3 is None:
+        return summary(daily(fetch_history(token)), today)
+    try:
+        cached = json.loads(s3.get_object(Bucket=bucket, Key=CACHE_KEY)["Body"].read())
+    except Exception:
+        cached = {}
+    known = {date.fromisoformat(k): v for k, v in (cached.get("days") or {}).items()}
+    full = not known or (not cached.get("complete") and min(known) > today - timedelta(days=400))
+    data = fetch_history(token) if full else fetch_history(token, max_pages=1)
+    known.update(daily(data))
+    complete = cached.get("complete", False)
+    if full:      # reached the start of the customer's history, or a year and a bit back
+        complete = all(not ((h.get("consumption") or {}).get("pageInfo") or {}).get("hasPreviousPage")
+                       for h in (data.get("viewer") or {}).get("homes") or []) or \
+            min(known) <= today - timedelta(days=400)
+    keep = {d: v for d, v in known.items() if d > today - timedelta(days=420)}
+    s3.put_object(Bucket=bucket, Key=CACHE_KEY, ContentType="application/json",
+                  Body=json.dumps({"complete": complete, "days": {d.isoformat(): v for d, v in sorted(keep.items())}})
+                  .encode("utf-8"))
+    return summary(keep, today)
 
 
 def vehicle_types(token):

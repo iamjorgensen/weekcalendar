@@ -233,3 +233,25 @@ def test_tibber_falls_back_to_previous_30_days():
     s = tibber.summary(per_day, today)
     assert s["pct"] == -20 and s["against"] == "forrige 30 dager" and s["kwh_last_year"] is None
     assert tibber.summary({k: v for k, v in per_day.items() if (today - k).days <= 31}, today)["pct"] is None
+
+
+def test_tibber_history_cached_in_s3(monkeypatch):
+    import tibber
+    from datetime import timedelta
+    today = date(2026, 11, 17)
+    full = sorted(_tibber_data(today)["viewer"]["homes"][0]["consumption"]["nodes"], key=lambda n: n["from"])
+    calls = []
+
+    def fake(token, q, timeout=10):
+        calls.append(q)
+        end = int(q.split('before: "')[1].split('"')[0]) if "before:" in q else len(full)
+        start = max(0, end - 31)
+        return {"viewer": {"homes": [{"id": "h1", "consumption": {
+            "pageInfo": {"startCursor": str(start), "hasPreviousPage": start > 0}, "nodes": full[start:end]}}]}}
+    monkeypatch.setattr(tibber, "query", fake)
+    s3 = S3()
+    first = tibber.energy("t", today, s3, "b")
+    assert first["pct"] == -20 and first["against"] == "i fjor" and len(calls) == 13     # backfill once
+    calls.clear()
+    again = tibber.energy("t", today + timedelta(days=1), s3, "b")
+    assert len(calls) == 1 and again["kwh"] > 0                                            # newest page only
