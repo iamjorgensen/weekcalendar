@@ -133,6 +133,7 @@
       <div class="card"><button class="btn" style="margin-top:0" onclick="testTibber()">Test Tibber</button>
         <pre id="tibber-test" class="small" style="display:none;white-space:pre-wrap;margin:10px 0 0"></pre></div>
       <h2>Siste brev lest</h2>
+      <div class="card" id="ai-cost"></div>
       <div class="card" id="letters"></div>
       <button class="btn" onclick="renderNow()">Lag nytt bilde nå</button>
     </section>
@@ -350,6 +351,13 @@ function editDate(i) {
     }, i >= 0 ? () => cfg.dates.splice(i, 1) : null);
 }
 
+const USD_NOK = 10.5;   // rough exchange rate for the cost estimate
+const fmtTokens = (n) => (n || 0) >= 1000 ? ((n / 1000).toFixed(1).replace(".", ",") + "k") : String(n || 0);
+const fmtCost = (usd) => { const kr = (usd || 0) * USD_NOK;
+  return (kr < 1 ? Math.round(kr * 100) + " øre" : kr.toFixed(2).replace(".", ",") + " kr") + ` ($${(usd || 0).toFixed(usd < 0.1 ? 4 : 2)})`; };
+const modelName = (m) => { const k = String(m || "").replace(/^anthropic[.]/, "");
+  return /haiku/.test(k) ? "Haiku" : /sonnet/.test(k) ? "Sonnet" : /opus/.test(k) ? "Opus" : k; };
+
 async function loadStatus() {
   try {
     const r = await api("/api/status"); const j = await r.json(); const m = j.meta || {};
@@ -373,8 +381,17 @@ async function loadStatus() {
       ${errs}`;
     const L = j.letters || [];
     $("#letters").innerHTML = L.length ? L.slice().reverse().map((l) => `<div class="list-item"><div style="flex:1">
-      <div>${esc(l.message)}</div><div class="small muted">${esc(new Date(l.at * 1000).toLocaleString("no", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</div></div></div>`).join("")
+      <div>${esc(l.message)}</div><div class="small muted">${esc(new Date(l.at * 1000).toLocaleString("no", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}${l.usage
+        ? " · " + esc(`${modelName(l.usage.model)}, ${fmtTokens(l.usage.input_tokens)} inn / ${fmtTokens(l.usage.output_tokens)} ut${l.usage.usd != null ? ", " + fmtCost(l.usage.usd) : ""}`) : ""}</div></div></div>`).join("")
       : `<div class="muted small">Ingen brev lest ennå.</div>`;
+    const months = Object.entries((j.ai_usage && j.ai_usage.months) || {}).sort().reverse();
+    const sum = months.reduce((a, [, m]) => ({ usd: a.usd + (m.usd || 0), letters: a.letters + (m.letters || 0) }), { usd: 0, letters: 0 });
+    $("#ai-cost").innerHTML = months.length ? `
+      <div class="row space"><b>Anslått AI-kostnad</b><span class="muted">${esc(fmtCost(sum.usd))} totalt · ${sum.letters} brev</span></div>
+      ${months.slice(0, 6).map(([k, m]) => `<div class="row space small"><span>${esc(new Date(k + "-01T12:00").toLocaleString("no", { month: "long", year: "numeric" }))}</span>
+        <span class="muted">${esc(`${m.letters} brev · ${fmtTokens(m.input_tokens)} inn / ${fmtTokens(m.output_tokens)} ut · ${fmtCost(m.usd)}`)}</span></div>`).join("")}
+      <p class="hint" style="margin:8px 0 0">Beregnet fra tokenbruk og Claude API-listepris, omregnet med ca. ${USD_NOK} kr/USD. Faktisk forbruk står på console.anthropic.com.</p>`
+      : `<div class="muted small">Ingen AI-kostnad registrert ennå.</div>`;
     const p = await api("/api/preview");
     if (p.ok) $("#preview").src = URL.createObjectURL(await p.blob());
   } catch (e) { /* status is best-effort */ }

@@ -62,17 +62,42 @@ def _fail(message, **extra):
 
 
 LETTERS_LOG_KEY = "log/letters.json"
+AI_USAGE_KEY = "log/ai_usage.json"
 
 
-def _log_letter(s3, bucket, message, key):
+def _s3_json(s3, bucket, key, default):
+    try:
+        return json.loads(s3.get_object(Bucket=bucket, Key=key)["Body"].read())
+    except Exception:
+        return default
+
+
+def _record_usage(s3, bucket, usage, month):
+    """Add one call's tokens and estimated cost to the per-month totals (best effort)."""
+    try:
+        data = _s3_json(s3, bucket, AI_USAGE_KEY, {})
+        months = data.setdefault("months", {})
+        m = months.setdefault(month, {"letters": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0})
+        m["letters"] += 1
+        m["input_tokens"] += usage.get("input_tokens", 0)
+        m["output_tokens"] += usage.get("output_tokens", 0)
+        m["usd"] = round(m["usd"] + (usage.get("usd") or 0), 6)
+        data["months"] = dict(sorted(months.items())[-24:])
+        s3.put_object(Bucket=bucket, Key=AI_USAGE_KEY, Body=json.dumps(data).encode("utf-8"),
+                      ContentType="application/json")
+    except Exception:
+        logger.exception("Could not write AI usage")
+
+
+def _log_letter(s3, bucket, message, key, usage=None):
     """Keep the last 50 results for the admin page's status tab (best effort)."""
     import time
     try:
-        try:
-            log = json.loads(s3.get_object(Bucket=bucket, Key=LETTERS_LOG_KEY)["Body"].read())
-        except Exception:
-            log = []
-        log = (log + [{"at": time.time(), "message": message, "key": key}])[-50:]
+        log = _s3_json(s3, bucket, LETTERS_LOG_KEY, [])
+        entry = {"at": time.time(), "message": message, "key": key}
+        if usage:
+            entry["usage"] = usage
+        log = (log + [entry])[-50:]
         s3.put_object(Bucket=bucket, Key=LETTERS_LOG_KEY, Body=json.dumps(log, ensure_ascii=False).encode("utf-8"),
                       ContentType="application/json")
     except Exception:
@@ -133,6 +158,11 @@ def handler(event, context):
             models = [first] + [m for m in extract.FALLBACK_MODELS if m != first]
         result = extract.call_model(anthropic_client(api_key), data, content_type, today,
                                     existing=existing, children_now=kids_now, models=models)
+        usage = result.pop("_usage", None)
+        if usage:
+            usage["usd"] = extract.estimate_usd(usage)
+            usage["api"] = "claude" if api_key else "bedrock"
+            _record_usage(s3, event.get("bucket"), usage, today.strftime("%Y-%m"))
         grade = int(result.get("grade") or 0)
         letter_child = extract.child_for_grade(grade, children, base_year, today) if grade else None
         doc_key, items = extract.to_calendar_items(result, today,
@@ -176,7 +206,7 @@ def handler(event, context):
         msg += ". Allerede passert: " + ", ".join(f"{i['title']} ({i['date'].strftime('%d.%m.%Y')})" for i in past)
     logger.info("Ingest %s: %s | %s", event.get("key"), msg,
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
-    _log_letter(s3, event.get("bucket"), msg, event.get("key"))
+    _log_letter(s3, event.get("bucket"), msg, event.get("key"), usage)
     question = (result.get("dinner_question") or "").strip()
     if doc_key and question:       # shown on the frame in the evening that week
         try:
@@ -185,7 +215,7 @@ def handler(event, context):
                           .encode("utf-8"), ContentType="application/json")
         except Exception:
             logger.exception("Could not store the dinner question")
-    return {"ok": True, "message": msg, "week": doc_key, "child": letter_child, "model": models[0],
+    return {"ok": True, "message": msg, "week": doc_key, "child": letter_child, "model": models[0], "usage": usage,
             "created": created, "deleted": deleted, "skipped": len(skipped), "past": len(past),
             "items": [{"date": i["date"].isoformat(), "title": i["title"], "start": i["start"],
                        "for": i["for"]} for i in new]}

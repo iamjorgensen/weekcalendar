@@ -96,6 +96,35 @@ class ExtractError(RuntimeError):
     pass
 
 
+# Claude API list prices, USD per million tokens (input, output). Used only to show an
+# estimated cost on the admin page; Bedrock is billed by AWS at its own rates.
+PRICES = {
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-opus-4-8": (5.00, 25.00),
+}
+
+
+def usage_of(response, model):
+    """{'model', 'input_tokens', 'output_tokens'} from a Messages response (zeros if absent)."""
+    u = getattr(response, "usage", None)
+    tokens = lambda name: int(getattr(u, name, 0) or 0)   # noqa: E731
+    return {"model": getattr(response, "model", None) or model,
+            "input_tokens": tokens("input_tokens") + tokens("cache_creation_input_tokens")
+            + tokens("cache_read_input_tokens"),
+            "output_tokens": tokens("output_tokens")}
+
+
+def estimate_usd(usage):
+    """Estimated cost in USD for a usage dict, or None for a model without a known price."""
+    model = (usage.get("model") or "").removeprefix("anthropic.")
+    price = PRICES.get(model) or next((p for m, p in PRICES.items() if model.startswith(m)), None)
+    if not price:
+        return None
+    return (usage.get("input_tokens", 0) * price[0] + usage.get("output_tokens", 0) * price[1]) / 1_000_000
+
+
 def content_block(data: bytes, media_type: str):
     """The user content block for the uploaded letter."""
     media_type = (media_type or "").split(";")[0].strip().lower()
@@ -139,7 +168,8 @@ def format_children(children_now):
 def call_model(client, data: bytes, media_type: str, today: date, existing=None, children_now=None,
                models=None):
     """
-    One Claude call with structured output. Returns the parsed dict.
+    One Claude call with structured output. Returns the parsed dict, with the call's
+    token usage under "_usage" (see usage_of).
     Tries each model in `models` (default: MODEL, then FALLBACK_MODELS) and moves on
     only when a model is unavailable to the account (not found / no access).
     """
@@ -176,9 +206,11 @@ def _call_one(client, model, data, media_type, today, existing, children_now):
         raise ExtractError("Svaret ble for langt (max_tokens).")
     text = next((b.text for b in response.content if b.type == "text"), "")
     try:
-        return json.loads(text)
+        result = json.loads(text)
     except ValueError as e:
         raise ExtractError(f"Ugyldig svar fra modellen: {e}")
+    result["_usage"] = usage_of(response, model)
+    return result
 
 
 # ------------------------------------------------------------------ children
