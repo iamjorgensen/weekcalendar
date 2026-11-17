@@ -77,7 +77,7 @@ def accepted(spond_event, member_ids):
 
 def events(token, group_id, days_ahead=90, now=None):
     now = now or datetime.now(timezone.utc)
-    params = {"groupId": group_id, "max": "300", "scheduled": "true",
+    params = {"groupId": group_id, "max": "300", "scheduled": "true", "order": "asc",
               "minEndTimestamp": (now - timedelta(days=1)).strftime(_DT),
               "maxStartTimestamp": (now + timedelta(days=days_ahead)).strftime(_DT)}
     return _request("GET", "sponds/", token, params=params) or []

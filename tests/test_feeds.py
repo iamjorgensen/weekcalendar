@@ -200,3 +200,15 @@ def test_cancelled_events_are_removed():
     stats = feeds.sync_feed(s, "cal", cancelled, ["Christian"], "f", TODAY)
     assert stats["deleted"] == 1 and s.deleted == ["ev-match-2@fotmob"]
     assert all("Italia" not in b["summary"] for b in s.posted)
+
+
+def test_similar_title_at_other_time_is_not_a_duplicate():
+    """A Spond 'Trening' at 17:00 is not the family's own 'Istrening' at 08:30 the same day."""
+    ev = {"uid": "spond-1", "summary": "Trening", "start": datetime(2026, 11, 20, 16, 0, tzinfo=timezone.utc),
+          "end": None, "all_day": False, "location": "", "description": "", "status": ""}
+    manual = [{"summary": "Istrening Amalie", "start": {"dateTime": "2026-11-20T08:30:00+01:00"}}]
+    s = Session(manual=manual)
+    assert feeds.sync_events(s, "cal", [ev], ["Peter"], "spond-G1", TODAY)["created"] == 1
+    manual = [{"summary": "Trening", "start": {"dateTime": "2026-11-20T17:00:00+01:00"}}]
+    s = Session(manual=manual)
+    assert feeds.sync_events(s, "cal", [dict(ev)], ["Peter"], "spond-G1", TODAY)["skipped"] == 1

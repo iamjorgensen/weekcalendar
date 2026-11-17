@@ -175,7 +175,7 @@ def render(main, mappings, data, days, errors):
 FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
-FEEDS_CODE_VERSION = "5"   # 4: Spond
+FEEDS_CODE_VERSION = "6"   # 4: Spond
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 

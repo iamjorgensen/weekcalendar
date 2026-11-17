@@ -241,7 +241,7 @@ def sync_events(session, calendar_id, events, names, fid, today, days_ahead=365,
                 for e in _ours(session, calendar_id, fid, today)}
     manual = {}
     for d, _t, title in family_events(session, calendar_id, today, window_end):
-        manual.setdefault(d, []).append(_norm(title))
+        manual.setdefault(d, []).append((_t, _norm(title)))
 
     stats = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}
     seen = set()
@@ -261,7 +261,10 @@ def sync_events(session, calendar_id, events, names, fid, today, days_ahead=365,
                 stats["updated"] += 1
             continue
         title = _norm(clean_title(ev["summary"]))
-        if any(title and (title in t or t in title) for t in manual.get(ev["_date"], []) if len(t) >= 4):
+        hhmm = "" if ev.get("all_day") else (ev["start"].astimezone(ZoneInfo(TZ)) if ZoneInfo else ev["start"]).strftime("%H:%M")
+        # Same day, same title and (for timed events) the same start time: the family already has it.
+        if any(title and len(t) >= 4 and (title in t or t in title) and (not mt or not hhmm or mt == hhmm)
+               for mt, t in manual.get(ev["_date"], [])):
             stats["skipped"] += 1     # the family already has it in the calendar
             continue
         _check(session.post(_url(calendar_id), json=body), "oppretting")
