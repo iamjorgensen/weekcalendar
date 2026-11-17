@@ -363,7 +363,7 @@ def _admin_api(path, method, event, headers):
             return _json(400, {"error": "Legg inn TIBBER_TOKEN i Parameter Store først"})
         from datetime import date as _date
         try:
-            data = tibber.query(params["TIBBER_TOKEN"], tibber.CONSUMPTION_Q)
+            data = tibber.fetch_history(params["TIBBER_TOKEN"])
             per_day = tibber.daily(data)
             homes = [h.get("appNickname") or "hjem" for h in (data.get("viewer") or {}).get("homes") or []]
             return _json(200, {"homes": homes, "days_with_data": len(per_day),

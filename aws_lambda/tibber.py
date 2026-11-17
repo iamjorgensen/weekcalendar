@@ -11,7 +11,9 @@ from datetime import date, datetime, timedelta
 API = "https://api.tibber.com/v1-beta/gql"
 
 CONSUMPTION_Q = """{ viewer { homes { id appNickname
-  consumption(resolution: DAILY, last: 400) { nodes { from consumption } } } } }"""
+  consumption(resolution: DAILY, last: 100%s) { pageInfo { startCursor hasPreviousPage }
+    nodes { from consumption } } } } }"""
+MAX_PAGES = 5        # 5 x 100 days: enough for "the same 30 days last year"
 
 
 class TibberError(RuntimeError):
@@ -60,7 +62,13 @@ def summary(per_day, today, days=30):
     complete_ly = sum(1 for v in last if v is not None) >= days * 0.9
     kwh_ly = sum(v for v in last if v is not None) if complete_ly else None
     pct = round((kwh - kwh_ly) / kwh_ly * 100) if kwh_ly else None
-    return {"kwh": round(kwh), "kwh_last_year": round(kwh_ly) if kwh_ly else None, "pct": pct,
+    against = "i fjor" if pct is not None else None
+    if pct is None:      # no year of history yet: compare with the 30 days before instead
+        before = [per_day.get(d - timedelta(days=days)) for d in dates]
+        if sum(1 for v in before if v is not None) >= days * 0.9:
+            kwh_prev = sum(v for v in before if v is not None)
+            pct, against = (round((kwh - kwh_prev) / kwh_prev * 100), "forrige 30 dager") if kwh_prev else (None, None)
+    return {"kwh": round(kwh), "kwh_last_year": round(kwh_ly) if kwh_ly else None, "pct": pct, "against": against,
             "days": [round(v, 1) if v is not None else None for v in this],
             "last_year": [round(v, 1) if v is not None else None for v in last]}
 
@@ -72,8 +80,30 @@ def _year_before(d):
         return d.replace(year=d.year - 1, day=28)
 
 
+def fetch_history(token):
+    """All homes' daily consumption, paging backwards (the API may return only part per request).
+    Returns data shaped like a single query result."""
+    first = query(token, CONSUMPTION_Q % "")
+    homes = (first.get("viewer") or {}).get("homes") or []
+    for home in homes:
+        cons = home.get("consumption") or {}
+        for _ in range(MAX_PAGES - 1):
+            info = cons.get("pageInfo") or {}
+            if not info.get("hasPreviousPage") or not info.get("startCursor"):
+                break
+            q = CONSUMPTION_Q % f', before: "{info["startCursor"]}"'
+            page = next((h for h in (query(token, q).get("viewer") or {}).get("homes") or []
+                         if h.get("id") == home.get("id")), None)
+            older = (page or {}).get("consumption") or {}
+            if not older.get("nodes"):
+                break
+            home["consumption"] = cons = {"pageInfo": older.get("pageInfo"),
+                                          "nodes": older["nodes"] + (cons.get("nodes") or [])}
+    return first
+
+
 def energy(token, today):
-    return summary(daily(query(token, CONSUMPTION_Q)), today)
+    return summary(daily(fetch_history(token)), today)
 
 
 def vehicle_types(token):

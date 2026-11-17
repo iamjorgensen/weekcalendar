@@ -129,7 +129,7 @@
         <button class="btn" style="margin-top:10px" onclick="previewDate()">Vis hvordan skjermen ser ut</button>
         <img class="preview" id="pv-img" style="display:none;margin-top:10px" alt="Forhåndsvisning">
         <p class="hint">Viser bursdager, høytider og ferier for datoen. Avtaler vises for dagene som allerede ligger i kalenderen. Rammen påvirkes ikke.</p></div>
-      <h2>Strøm og bil (Tibber)</h2>
+      <h2>Strøm (Tibber)</h2>
       <div class="card"><button class="btn" style="margin-top:0" onclick="testTibber()">Test Tibber</button>
         <pre id="tibber-test" class="small" style="display:none;white-space:pre-wrap;margin:10px 0 0"></pre></div>
       <h2>Siste brev lest</h2>
@@ -388,8 +388,7 @@ async function testTibber() {
   box.textContent = [
     `Hjem: ${(j.homes || []).join(", ") || "–"}`,
     `Dager med forbruk: ${j.days_with_data} (fra ${j.first_day || "–"})`,
-    sm.kwh != null ? `Siste 30 dager: ${sm.kwh} kWh` + (sm.pct != null ? ` (${sm.pct > 0 ? "+" : ""}${sm.pct} % mot i fjor: ${sm.kwh_last_year} kWh)` : " (mangler tall fra i fjor)") : "Ingen forbruk funnet",
-    `Bildata i Tibbers API: ${(j.vehicle_types || []).join(", ") || "ingen"}`,
+    sm.kwh != null ? `Siste 30 dager: ${sm.kwh} kWh` + (sm.pct != null ? ` (${sm.pct > 0 ? "+" : ""}${sm.pct} % mot ${sm.against})` : " (for lite historikk til å sammenligne ennå)") : "Ingen forbruk funnet",
   ].join("\n");
 }
 

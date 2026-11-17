@@ -564,7 +564,8 @@ def _energy(img, draw, x, y, w, bottom, energy, car=None):
         draw_text_top(draw, (x + w - text_w(draw, pct, f_bold(15)), y), pct, f_bold(15),
                       GREEN if energy["pct"] <= 0 else RED)
         y += 18
-        draw_text_top(draw, (x, y), "mot samme periode i fjor", f_tiny(12), BLACK)
+        draw_text_top(draw, (x, y), "mot samme periode i fjor" if energy.get("against", "i fjor") == "i fjor"
+                      else f"mot {energy['against']}", f_tiny(12), BLACK)
     y += 20
     this, last = energy.get("days") or [], energy.get("last_year") or []
     vals = [v for v in this + last if v]

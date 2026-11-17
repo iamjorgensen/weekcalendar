@@ -167,7 +167,8 @@ def test_tibber_summary_this_year_vs_last():
     assert s["kwh"] == 1200 and s["kwh_last_year"] == 1500 and s["pct"] == -20
     assert len(s["days"]) == 30 and s["days"][-1] == 40.0
     short = {d: v for d, v in tibber.daily(_tibber_data(today)).items() if d > date(2026, 1, 1)}
-    assert tibber.summary(short, today)["pct"] is None          # no data a year back
+    s2 = tibber.summary(short, today)                             # no data a year back: previous 30 days
+    assert s2["against"] == "forrige 30 dager" and s2["pct"] == -20
 
 
 def test_energy_block_in_evening_and_car_in_corner():
@@ -195,9 +196,40 @@ def test_tibber_admin_test_endpoint(aws, monkeypatch):
     assert _api("/api/tibber/test", method="POST")["statusCode"] == 400
     _put_params(ssm, {"TIBBER_TOKEN": "t"})
     today = date.today()
+    monkeypatch.setattr(tibber, "fetch_history", lambda token: _tibber_data(today))
     monkeypatch.setattr(tibber, "query", lambda token, q, timeout=10: _tibber_data(today) if "consumption" in q
                         else {"__schema": {"types": [{"name": "Home"}, {"name": "ElectricVehicle"}]}})
     r = _api("/api/tibber/test", method="POST")
     body = json.loads(r["body"])
     assert r["statusCode"] == 200 and body["homes"] == ["Hjemme"] and body["vehicle_types"] == ["ElectricVehicle"]
     assert body["summary"]["kwh"] == 1200
+
+
+def test_tibber_pages_backwards(monkeypatch):
+    import tibber
+    from datetime import timedelta
+    today = date(2026, 11, 17)
+    full = _tibber_data(today)["viewer"]["homes"][0]["consumption"]["nodes"]
+    full = sorted(full, key=lambda n: n["from"])
+    calls = []
+
+    def fake(token, q, timeout=10):
+        calls.append(q)
+        # 100 newest days per page; the cursor is the index of the first node returned
+        end = int(q.split('before: "')[1].split('"')[0]) if "before:" in q else len(full)
+        start = max(0, end - 100)
+        return {"viewer": {"homes": [{"id": "h1", "appNickname": "Hjem", "consumption": {
+            "pageInfo": {"startCursor": str(start), "hasPreviousPage": start > 0}, "nodes": full[start:end]}}]}}
+    monkeypatch.setattr(tibber, "query", fake)
+    s = tibber.summary(tibber.daily(tibber.fetch_history("t")), today)
+    assert len(calls) == 4 and s["pct"] == -20      # 399 days in 4 pages: reached a year back
+
+
+def test_tibber_falls_back_to_previous_30_days():
+    import tibber
+    from datetime import timedelta
+    today = date(2026, 11, 17)
+    per_day = {today - timedelta(days=i): (40.0 if i <= 30 else 50.0) for i in range(1, 61)}
+    s = tibber.summary(per_day, today)
+    assert s["pct"] == -20 and s["against"] == "forrige 30 dager" and s["kwh_last_year"] is None
+    assert tibber.summary({k: v for k, v in per_day.items() if (today - k).days <= 31}, today)["pct"] is None
