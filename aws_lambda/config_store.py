@@ -28,7 +28,7 @@ CONFIG_KEY = "config/config.json"
 HISTORY_PREFIX = "config/history/"
 COLORS = ["BLACK", "RED", "GREEN", "BLUE", "YELLOW"]
 KINDS = ["barn", "voksen", ""]
-VIEW_OPTIONS = ["collapse", "month", "tomorrow", "evening", "advice", "morning"]
+VIEW_OPTIONS = ["collapse", "month", "month_right", "month_column", "tomorrow", "evening", "advice", "morning"]
 DEFAULT_VIEW = {"options": ["collapse", "month", "tomorrow", "evening", "advice"], "evening_hour": 17, "days": 14}
 
 SHEET_CSV_URL = ("https://docs.google.com/spreadsheets/d/e/2PACX-1vTYL3NSfO_r0l9HItyeakQjkqC00XVTgoXrmHgGcSS3HAT_"

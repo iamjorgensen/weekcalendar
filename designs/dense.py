@@ -365,6 +365,72 @@ def _month(draw, today, event_dates, top):
         y += rh
 
 
+def _light_month_metrics(today, big):
+    import calendar
+    weeks = len(calendar.Calendar(0).monthdatescalendar(today.year, today.month))
+    rh = 40 if big else 16
+    return weeks, rh, 26 + 18 + weeks * rh + 6
+
+
+def _month_light(img, draw, today, days, x, y, w, big=False):
+    """Month calendar on the white side. Big: week numbers and a dot per person with events."""
+    import calendar
+    from designs.common import MONTHS
+    weeks, rh, h = _light_month_metrics(today, big)
+    fh = f_bold(18 if big else 15)
+    draw_text_top(draw, (x, y + 2), f"{MONTHS[today.month - 1].capitalize()} {today.year}", fh, BLACK)
+    draw.rectangle([x, y + 22, x + w, y + 23], fill=BLACK)
+    wk_w = 26 if big else 0
+    cw = (w - wk_w) / 7
+    f_wd = f_tiny(13 if big else 12)
+    f_d = f_bold(17) if big else f_tiny(13)
+    yy = y + 30
+    if big:
+        draw_text_top(draw, (x, yy), "uke", f_tiny(11), BLACK)
+    for i, wd in enumerate("MTOTFLS"):
+        cx = x + wk_w + i * cw + cw / 2
+        draw_text_top(draw, (cx - text_w(draw, wd, f_wd) / 2, yy), wd, f_wd, RED if i >= 5 else BLACK)
+    yy += 18
+    info = {}
+    for d in days:
+        people = []
+        for e in d["events"]:
+            for _l, col in e.get("people") or []:
+                if col not in people:
+                    people.append(col)
+        info[d["date"]] = (people, bool(d["events"]))
+    for week in calendar.Calendar(0).monthdatescalendar(today.year, today.month):
+        if big:
+            wn = str(week[0].isocalendar()[1])
+            draw_text_top(draw, (x + 2, yy + 3), wn, f_tiny(12), BLACK)
+        for i, d in enumerate(week):
+            if d.month != today.month:
+                continue
+            cx = x + wk_w + i * cw + cw / 2
+            txt = str(d.day)
+            tw = text_w(draw, txt, f_d)
+            th = cap_height(draw, f_d)
+            if d == today:
+                pad = 4 if big else 2
+                draw.rectangle([cx - tw / 2 - pad - 2, yy - pad, cx + tw / 2 + pad + 2, yy + th + pad], fill=BLACK)
+                draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, WHITE)
+            else:
+                draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, RED if i >= 5 else BLACK)
+            people, any_ev = info.get(d, ([], False))
+            if d > today and any_ev:
+                if big and people:
+                    n = min(4, len(people))
+                    dx0 = cx - (n * 8 - 2) / 2
+                    for k, col in enumerate(people[:4]):
+                        draw.ellipse([dx0 + k * 8, yy + th + 6, dx0 + k * 8 + 6, yy + th + 12], fill=col)
+                elif big:
+                    draw.ellipse([cx - 3, yy + th + 6, cx + 3, yy + th + 12], fill=BLACK)
+                else:
+                    draw.rectangle([cx + tw / 2 + 2, yy + 1, cx + tw / 2 + 4, yy + 3], fill=BLACK)
+        yy += rh
+    return h
+
+
 def render(data, opts=None):
     """
     opts (all optional, default off):
@@ -406,7 +472,8 @@ def render(data, opts=None):
     # The black panel fills in priority order: today's events (all of them if
     # possible), then the month calendar, then "I morgen" - each only if it fits.
     reserve = 0
-    if opts.get("month"):
+    month_white = opts.get("month_right") or opts.get("month_column")
+    if opts.get("month") and not month_white:
         scratch = Image.new("RGB", (W, H), WHITE)
         y_full = _today(scratch, ImageDraw.Draw(scratch), days[0], "", battery=None)
         mh = month_height(data["today"])
@@ -430,10 +497,19 @@ def render(data, opts=None):
     left = HERO_W + gap
     col_w = (W - left - gap - 8) // 2
     cols = [left, left + col_w + gap]
+    bottoms = [H - 6, H - 6]
+    if opts.get("month_column"):
+        # the whole right column is a large month calendar; the day list uses the left column
+        _month_light(img, draw, data["today"], days, cols[1], 8, col_w, big=True)
+        cols, bottoms = cols[:1], bottoms[:1]
+    elif opts.get("month_right"):
+        _w, _r, mh = _light_month_metrics(data["today"], False)
+        _month_light(img, draw, data["today"], days, cols[1], H - mh - 4, col_w)
+        bottoms[1] = H - mh - 12
     col_i, y = 0, 8
     for day in list_days:
         h = _day_section(img, draw, 0, 0, col_w, day, measure=True)
-        if y + h > H - 6:
+        if y + h > bottoms[col_i]:
             col_i += 1
             y = 8
             if col_i >= len(cols):

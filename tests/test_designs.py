@@ -189,3 +189,11 @@ def test_private_icon_from_calendar_event():
     import data_provider
     assert data_provider._private_icon({"extendedProperties": {"private": {"icon": "soccer"}}}) == "soccer"
     assert data_provider._private_icon({}) is None
+
+
+@pytest.mark.parametrize("opt", ["month_right", "month_column"])
+def test_month_on_white_side(opt):
+    from designs import dense
+    dd = to_design_data(_data(), days=14, now=NOW)
+    img = dense.render(dd, {opt: True, "month": True, "collapse": True})
+    assert img.size == (800, 480) and len(img.getcolors(1 << 24)) <= 6
