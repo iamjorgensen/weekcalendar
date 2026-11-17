@@ -65,7 +65,8 @@ def _clean_title(ev):
     for prefix in ("Fridag:", "fridag:"):
         if title.startswith(prefix):
             title = title[len(prefix):].strip()
-    return title
+    # leftovers after the tag mapping removed a name, e.g. ": Slutt 13:20" or "Tur –"
+    return title.strip(" \t:;,–-|/").strip()
 
 
 def _is_holiday(ev):

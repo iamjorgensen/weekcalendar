@@ -266,11 +266,11 @@ def to_calendar_items(result: dict, today: date, default_for=None):
     return doc_key, items
 
 
-def title_prefix(names):
-    """['Amalie', 'Sigrid'] -> 'Amalie og Sigrid: ' ; [] -> ''."""
-    names = [n for n in names if n]
-    if not names:
-        return ""
-    if len(names) == 1:
-        return names[0] + ": "
-    return ", ".join(names[:-1]) + " og " + names[-1] + ": "
+def title_with_names(title, names):
+    """
+    'Slutt 13:20', ['Amalie'] -> 'Slutt 13:20 Amalie'. Names go LAST, separated only by
+    spaces, so the calendar's tag mapping (which removes a name and shows it as a coloured
+    tag) leaves a clean title behind.
+    """
+    names = [n for n in names or [] if n]
+    return " ".join([title] + names) if names else title

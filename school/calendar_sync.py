@@ -74,13 +74,13 @@ def existing_events(session, calendar_id, scope):
 
 
 def event_body(item, scope=None):
-    from school.extract import title_prefix
+    from school.extract import title_with_names
     d = item["date"]
     private = {"source": SOURCE, "doc": "week" if scope else "other", "kind": item.get("kind", ""),
                "for": ",".join(item.get("for") or [])}
     private.update(scope or {})
     body = {
-        "summary": title_prefix(item.get("for") or []) + item["title"],
+        "summary": title_with_names(item["title"], item.get("for") or []),
         "description": "\n".join(x for x in (item.get("details"),
                                               f"Fra ukebrev {scope['week']}" if scope else "Lagt inn fra dokument")
                                  if x),

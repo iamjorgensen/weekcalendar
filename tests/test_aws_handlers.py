@@ -486,7 +486,7 @@ def test_ingest_end_to_end(aws, monkeypatch):
     content = fake_ai.requests[0]["messages"][0]["content"]
     assert "Amalie (6. trinn), Sigrid (3. trinn)" in content[1]["text"]
     assert "Foreldremøte 6B" in content[2]["text"]
-    assert all(b["summary"].startswith("Amalie: ") for b in session.posted)
+    assert all(b["summary"].endswith(" Amalie") for b in session.posted)
 
 
 def test_ingest_reports_missing_settings(aws):

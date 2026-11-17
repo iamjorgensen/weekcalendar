@@ -89,10 +89,10 @@ def test_flyer_items_use_dates_and_no_week_key():
     assert not any(i["title"].startswith("Husk denne uka") for i in items)
 
 
-def test_title_prefix():
-    assert extract.title_prefix([]) == ""
-    assert extract.title_prefix(["Amalie"]) == "Amalie: "
-    assert extract.title_prefix(["Amalie", "Sigrid"]) == "Amalie og Sigrid: "
+def test_names_go_last_for_the_tag_mapping():
+    assert extract.title_with_names("Frimarked", []) == "Frimarked"
+    assert extract.title_with_names("Slutt 13:20", ["Amalie"]) == "Slutt 13:20 Amalie"
+    assert extract.title_with_names("Frimarked", ["Amalie", "Sigrid"]) == "Frimarked Amalie Sigrid"
 
 
 def test_children_and_grades_advance_in_august():
@@ -210,10 +210,10 @@ def test_sync_weekly_letter_replaces_old_and_formats_events():
     q = session.gets[0]["privateExtendedProperty"]
     assert "letter_child=Amalie" in q and "week=2026-W47" in q and "doc=week" in q
     bodies = {b["summary"]: b for b in session.posted}
-    slutt = bodies["Amalie: Slutt 13:20"]
+    slutt = bodies["Slutt 13:20 Amalie"]
     assert slutt["start"] == {"dateTime": "2026-11-18T13:20:00", "timeZone": "Europe/Oslo"}
     assert slutt["end"]["dateTime"] == "2026-11-18T13:50:00"
-    closed = bodies["Amalie: Skole og SFO stengt – kursdag"]
+    closed = bodies["Skole og SFO stengt – kursdag Amalie"]
     assert closed["start"] == {"date": "2026-11-19"} and closed["end"] == {"date": "2026-11-20"}
     assert closed["extendedProperties"]["private"]["week"] == "2026-W47"
     assert closed["transparency"] == "transparent"

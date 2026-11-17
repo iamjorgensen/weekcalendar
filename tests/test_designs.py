@@ -83,3 +83,11 @@ def test_main_uses_design_and_falls_back_to_legacy(monkeypatch):
     monkeypatch.setattr(designs, "render_design", broken)
     img = main._try_render_calendar(_data(), dict(main.opts, design="hero"), 800, 480, 7)
     assert img.size == (800, 480)  # legacy layout_renderer still produced an image
+
+
+def test_titles_are_tidied_after_tag_mapping():
+    from designs.adapter import _clean_title
+    assert _clean_title({"display_text": ": Slutt 13:20"}) == "Slutt 13:20"
+    assert _clean_title({"display_text": "Turdag –"}) == "Turdag"
+    assert _clean_title({"display_text": "Fridag: 1. juledag"}) == "1. juledag"
+    assert _clean_title({"display_text": "Kl. 18:00"}) == "Kl. 18:00"
