@@ -156,6 +156,13 @@
     <section id="visning">
       <h2>Visning</h2>
       <div class="card" id="toggles"></div>
+      <div class="card"><label class="f" style="margin-top:0">Månedskalender</label>
+        <select id="monthpos" onchange="setMonth(this.value)">
+          <option value="">Av</option>
+          <option value="month">I det svarte feltet (når det er plass)</option>
+          <option value="month_right">Liten, nede til høyre</option>
+          <option value="month_column">Stor, i høyre kolonne (ukenummer og prikker per person)</option>
+        </select></div>
       <div class="card"><div class="grid2">
         <div><label class="f">Kveldsmodus fra kl.</label><select id="evh" onchange="cfg.view.evening_hour=+this.value;dirty()"></select></div>
         <div><label class="f">Antall dager hentet</label><select id="days" onchange="cfg.view.days=+this.value;dirty()"></select></div>
@@ -186,7 +193,6 @@ const COLORS = { BLACK: "var(--c-black)", RED: "var(--c-red)", GREEN: "var(--c-g
 const FG = { YELLOW: "#111", GREEN: "#111" };
 const VIEW = [
   ["collapse", "Slå sammen gjentakende", "«Juleboden (tir–fre)» én gang i stedet for hver dag"],
-  ["month", "Månedskalender", "Nederst i det svarte feltet når det er plass"],
   ["tomorrow", "«I morgen»", "Morgendagens avtaler i det svarte feltet når alt får plass"],
   ["evening", "Kveldsmodus", "Om kvelden viser det store feltet morgendagen"],
   ["advice", "Klesråd", "«Klær: vinterdress, lue og votter · Glatt?»"],
@@ -328,8 +334,13 @@ function renderView() {
     <div class="toggle-row"><div><div class="t">${t}</div><div class="d">${d}</div></div>
       <label class="switch"><input type="checkbox" ${cfg.view.options.includes(k) ? "checked" : ""}
         onchange="setOpt('${k}', this.checked)"><span></span></label></div>`).join("");
+  $("#monthpos").value = MONTH_OPTS.find((o) => cfg.view.options.includes(o)) || "";
   $("#evh").innerHTML = [15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${h === cfg.view.evening_hour ? "selected" : ""}>${h}:00</option>`).join("");
   $("#days").innerHTML = [7, 10, 14, 21].map((d) => `<option ${d === cfg.view.days ? "selected" : ""}>${d}</option>`).join("");
+}
+const MONTH_OPTS = ["month", "month_right", "month_column"];
+function setMonth(v) {
+  cfg.view.options = cfg.view.options.filter((o) => !MONTH_OPTS.includes(o)).concat(v ? [v] : []); dirty();
 }
 function setOpt(k, on) {
   const o = new Set(cfg.view.options); on ? o.add(k) : o.delete(k); cfg.view.options = [...o]; dirty();
