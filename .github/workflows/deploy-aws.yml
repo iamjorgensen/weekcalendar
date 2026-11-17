@@ -25,6 +25,9 @@ concurrency:
 env:
   AWS_REGION: eu-west-1
   STACK_NAME: weekcalendar
+  # Always pass these explicitly: on an existing stack SAM otherwise keeps the
+  # values from an earlier deploy instead of the template's new defaults.
+  PARAMS: "Design=dense RenderDays=14 EnableSchedule=false"
   SAM_CLI_TELEMETRY: "0"
 
 jobs:
@@ -67,6 +70,7 @@ jobs:
             --resolve-s3 \
             --resolve-image-repos \
             --capabilities CAPABILITY_IAM \
+            --parameter-overrides $PARAMS \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
