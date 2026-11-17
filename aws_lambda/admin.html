@@ -371,8 +371,9 @@ function renderSpond() {
           ${g.icon ? `<span class="small muted">ikon: ${esc(g.icon)}</span>` : ""}
           <span class="small muted">${g.only_accepted ? "bare påmeldt" : "alle"}</span>
           <button class="link" onclick="editSpond(${i})">Endre</button></div></div>
-        <label class="switch"><input type="checkbox" ${g.on ? "checked" : ""} onchange="cfg.spond.groups[${i}].on=this.checked;dirty();renderSpond()"><span></span></label></div>`).join("")
-      || `<div class="muted small" style="padding:8px 0">Ingen grupper hentet ennå.</div>`}`;
+        <label class="switch"><input type="checkbox" ${g.on ? "checked" : ""} onchange="cfg.spond.groups[${i}].on=this.checked;if(this.checked)cfg.spond.on=true;dirty();renderSpond()"><span></span></label></div>`).join("")
+      || `<div class="muted small" style="padding:8px 0">Ingen grupper hentet ennå.</div>`}
+    ${!sp.on && sp.groups.some((g) => g.on) ? `<div class="warn small">«Hent fra Spond» er av – ingen grupper synkes.</div>` : ""}`;
 }
 
 async function loadSpondGroups() {
