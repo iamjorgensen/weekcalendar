@@ -82,6 +82,7 @@ Regler:
 - Ukebrev: bruk "weekday" for dager i uka. Står det en egen dato (f.eks. "foreldremøte torsdag 3. desember kl. 18"), bruk "date" = YYYY-MM-DD.
 - Andre dokumenter: bruk alltid "date" = YYYY-MM-DD og "weekday" = "". Mangler årstall, velg første dato fra og med i dag.
 - "for": hvilke av familiens barn posten gjelder (navn fra listen). For ukebrev: barnet på det trinnet. Gjelder det alle barn/hele familien, eller er det uklart: tom liste.
+- Grupper: står det at noe gjelder en bestemt gruppe (f.eks. "Gruppe Sild: gym tirsdag", "Gruppe Torsk: gym onsdag"), ta bare med det som gjelder barnets egen gruppe fra listen. Gjelder noe annenhver uke / partallsuker / oddetallsuker, bruk ukenummeret for å avgjøre om det gjelder denne uka.
 - Generelle påminnelser for hele uka uten bestemt dag (skiftetøy, innesko) i "week_reminders" (bare ukebrev), korte.
 - Du får en liste over hva som allerede ligger i familiekalenderen. Sett "already_in_calendar" = true når det samme allerede står der samme dag, selv om det er formulert annerledes ("Foreldremøte" = "Foreldremøte 6B kl 18"). Ved tvil: false.
 - Ukenummer og trinn: bare når dokumentet sier det, ellers 0.
@@ -120,10 +121,16 @@ def format_existing(existing):
 
 
 def format_children(children_now):
-    """[(name, grade_now)] -> prompt text."""
+    """[(name, grade_now[, groups])] -> prompt text."""
     if not children_now:
         return "Familiens barn er ikke oppgitt."
-    return "Familiens barn: " + ", ".join(f"{n} ({g}. trinn)" for n, g in children_now) + "."
+    parts = []
+    for c in children_now:
+        n, g = c[0], c[1]
+        groups = list(c[2]) if len(c) > 2 and c[2] else []
+        extra = f", gruppe {' og '.join(groups)}" if groups else ""
+        parts.append(f"{n} ({g}. trinn{extra})")
+    return "Familiens barn: " + ", ".join(parts) + "."
 
 
 def call_model(client, data: bytes, media_type: str, today: date, existing=None, children_now=None,

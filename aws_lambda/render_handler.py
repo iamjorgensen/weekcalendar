@@ -179,7 +179,7 @@ FEEDS_CODE_VERSION = "3"   # 3: feed icon stored on the events
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 
-def sync_calendar_feeds(s3, bucket, errors, force=False):
+def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
     """
     Copy subscribed calendar feeds (CALENDAR_FEEDS) into the family calendar, at most
     every FEED_SYNC_HOURS (or when the config changed). Never fails the render.
@@ -187,7 +187,11 @@ def sync_calendar_feeds(s3, bucket, errors, force=False):
     """
     import hashlib
     params, _missing = aws_common.get_parameters(["CALENDAR_FEEDS", "GOOGLE_SA_JSON", "CALENDAR_ID"])
-    spec = params.get("CALENDAR_FEEDS") or ""
+    if cfg is not None:
+        import config_store
+        spec = config_store.feeds_spec(cfg)      # the admin page's feeds
+    else:
+        spec = params.get("CALENDAR_FEEDS") or ""
     if not spec.strip():
         return None
     if not params.get("GOOGLE_SA_JSON") or not params.get("CALENDAR_ID"):
@@ -245,17 +249,37 @@ def handler(event, context):
     s3 = aws_common.client("s3")
     known_icons = restore_caches(s3, bucket)
 
+    # Settings from the admin page (config/config.json). Until it has been saved
+    # once, the Google Sheet + Parameter Store are used as before.
+    cfg = None
+    try:
+        import config_store
+        cfg = config_store.load(s3, bucket)
+    except Exception as e:
+        logger.exception("Could not read config.json")
+        errors.append(f"config: {e}")
+    if cfg is not None:
+        view = cfg.get("view") or {}
+        os.environ["DESIGN_OPTIONS"] = "+".join(view.get("options") or [])
+        os.environ["EVENING_HOUR"] = str(view.get("evening_hour", 17))
+        days = int(view.get("days") or days)
+
     # Subscribed calendars (e.g. the national team's fixtures) go into the family
     # calendar before we read it, so new matches show up in this same render.
     feeds_status = None
     try:
-        feeds_status = sync_calendar_feeds(s3, bucket, errors, force=bool(event.get("force_feeds")))
+        feeds_status = sync_calendar_feeds(s3, bucket, errors, force=bool(event.get("force_feeds")), cfg=cfg)
     except Exception as e:
         logger.exception("Feed sync crashed")
         errors.append(f"feeds: {e}")
 
     (main, data_provider, mappings), first_import = import_app()
-    if not first_import:
+    if cfg is not None:
+        # Tags and icons from the admin page replace the Google Sheet
+        import config_store
+        mappings.EVENT_MAPPINGS = config_store.event_mappings(cfg)
+        mappings.EVENT_MAPPINGS_SOURCE = "config"
+    elif not first_import:
         # Warm container: mappings were loaded at the first import; refresh them.
         try:
             mappings.reload_event_mappings()
@@ -297,6 +321,7 @@ def handler(event, context):
         "errors": errors,
         "battery": battery,
         "feeds": feeds_status,
+        "config": "admin" if cfg is not None else "sheet",
     }
     s3.put_object(Bucket=bucket, Key=META_KEY, Body=json.dumps(meta, indent=1).encode("utf-8"),
                   ContentType="application/json", CacheControl="no-store")

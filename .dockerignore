@@ -10,6 +10,7 @@
 !designs/*.py
 !school/*.py
 !aws_lambda/ingest_handler.py
+!aws_lambda/config_store.py
 !aws_lambda/aws_common.py
 !aws_lambda/render_handler.py
 !assets/fonts/*.ttf

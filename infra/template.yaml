@@ -137,6 +137,10 @@ Resources:
               Resource:
                 - !Sub "${ImageBucket.Arn}/latest/*"
                 - !Sub "${ImageBucket.Arn}/cache/*"
+            - Sid: ReadAdminConfig
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${ImageBucket.Arn}/config/*"
             - Sid: ListCache
               Effect: Allow
               Action: s3:ListBucket
@@ -179,7 +183,13 @@ Resources:
             - Sid: ReadUploads
               Effect: Allow
               Action: s3:GetObject
-              Resource: !Sub "${ImageBucket.Arn}/inbox/*"
+              Resource:
+                - !Sub "${ImageBucket.Arn}/inbox/*"
+                - !Sub "${ImageBucket.Arn}/config/*"
+            - Sid: LettersLog
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub "${ImageBucket.Arn}/log/*"
             - Sid: ReadConfig
               Effect: Allow
               Action: ssm:GetParameters
@@ -271,6 +281,7 @@ Resources:
         Variables:
           RENDER_FUNCTION_NAME: !Ref RenderFunction
           INGEST_FUNCTION_NAME: !Ref IngestFunction
+          DESIGN_OPTIONS: !Ref DesignOptions
           FRESH_RENDER_TIMEOUT: "65"
       FunctionUrlConfig:
         AuthType: NONE
@@ -288,10 +299,25 @@ Resources:
               Condition:
                 StringLike:
                   s3:prefix: ["latest/*"]
-            - Sid: ReadFrameToken
+            - Sid: ReadFrameAndAdminParams
               Effect: Allow
               Action: ssm:GetParameters
-              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/FRAME_TOKEN"
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/FRAME_TOKEN"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/ADMIN_TOKEN"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/CHILDREN"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/CHILDREN_SCHOOL_YEAR"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/CALENDAR_FEEDS"
+            - Sid: AdminConfig
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub "${ImageBucket.Arn}/config/*"
+            - Sid: AdminReadLogs
+              Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "${ImageBucket.Arn}/log/*"
+                - !Sub "${ImageBucket.Arn}/cache/feeds_sync.json"
             - Sid: DecryptSecureStringsViaSsm
               Effect: Allow
               Action: kms:Decrypt

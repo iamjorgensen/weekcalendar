@@ -61,17 +61,41 @@ def _fail(message, **extra):
     return {"ok": False, "message": message, **extra}
 
 
+LETTERS_LOG_KEY = "log/letters.json"
+
+
+def _log_letter(s3, bucket, message, key):
+    """Keep the last 50 results for the admin page's status tab (best effort)."""
+    import time
+    try:
+        try:
+            log = json.loads(s3.get_object(Bucket=bucket, Key=LETTERS_LOG_KEY)["Body"].read())
+        except Exception:
+            log = []
+        log = (log + [{"at": time.time(), "message": message, "key": key}])[-50:]
+        s3.put_object(Bucket=bucket, Key=LETTERS_LOG_KEY, Body=json.dumps(log, ensure_ascii=False).encode("utf-8"),
+                      ContentType="application/json")
+    except Exception:
+        logger.exception("Could not write letters log")
+
+
 def handler(event, context):
     from school import calendar_sync, extract
 
     event = event or {}
     today = (datetime.now(OSLO) if OSLO else datetime.now()).date()
     params, missing = aws_common.get_parameters(PARAMS)
-    for required in ("GOOGLE_SA_JSON", "CALENDAR_ID", "CHILDREN"):
+    s3 = aws_common.client("s3")
+    cfg = None
+    try:
+        import config_store
+        cfg = config_store.load(s3, os.environ.get("BUCKET_NAME") or event.get("bucket"))
+    except Exception:
+        logger.exception("Could not read config.json")
+    for required in ("GOOGLE_SA_JSON", "CALENDAR_ID") + (() if cfg else ("CHILDREN",)):
         if not params.get(required):
             return _fail(f"Mangler innstillingen {required} i AWS Parameter Store.")
 
-    s3 = aws_common.client("s3")
     obj = s3.get_object(Bucket=event["bucket"], Key=event["key"])
     data = obj["Body"].read()
     content_type = event.get("content_type") or obj.get("ContentType") or ""
@@ -84,12 +108,20 @@ def handler(event, context):
         logger.exception("Reading the calendar failed")
         return _fail(f"Kunne ikke lese Google Kalender: {e}")
 
-    children = extract.parse_children(params["CHILDREN"])
-    try:
-        base_year = int(params.get("CHILDREN_SCHOOL_YEAR") or extract.school_year_start(today))
-    except ValueError:
-        base_year = extract.school_year_start(today)
-    kids_now = extract.children_now(children, base_year, today)
+    if cfg is not None:   # admin page: children, grades and groups
+        import config_store
+        kids = config_store.children(cfg)
+        children = [(n, g) for n, g, _groups in kids]
+        groups = {n: gr for n, _g, gr in kids}
+        base_year = int(cfg.get("school_year") or extract.school_year_start(today))
+    else:
+        children = extract.parse_children(params["CHILDREN"])
+        groups = {}
+        try:
+            base_year = int(params.get("CHILDREN_SCHOOL_YEAR") or extract.school_year_start(today))
+        except ValueError:
+            base_year = extract.school_year_start(today)
+    kids_now = [(n, g, groups.get(n, [])) for n, g in extract.children_now(children, base_year, today)]
 
     try:
         api_key = params.get("ANTHROPIC_API_KEY")
@@ -141,6 +173,7 @@ def handler(event, context):
         msg += ". Allerede passert: " + ", ".join(f"{i['title']} ({i['date'].strftime('%d.%m.%Y')})" for i in past)
     logger.info("Ingest %s: %s | %s", event.get("key"), msg,
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
+    _log_letter(s3, event.get("bucket"), msg, event.get("key"))
     return {"ok": True, "message": msg, "week": doc_key, "child": letter_child,
             "created": created, "deleted": deleted, "skipped": len(skipped), "past": len(past),
             "items": [{"date": i["date"].isoformat(), "title": i["title"], "start": i["start"],

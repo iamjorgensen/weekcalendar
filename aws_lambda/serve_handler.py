@@ -249,6 +249,83 @@ def _serve_status():
     return _resp(200, obj["Body"].read().decode("utf-8"), "application/json")
 
 
+# ------------------------------------------------------------------ admin
+ADMIN_PARAMS = ["ADMIN_TOKEN", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CALENDAR_FEEDS"]
+FEEDS_STATE_KEY = "cache/feeds_sync.json"
+LETTERS_LOG_KEY = "log/letters.json"
+_admin_page = {"html": None}
+
+
+def _admin_html():
+    if _admin_page["html"] is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "admin.html"), encoding="utf-8") as f:
+            _admin_page["html"] = f.read()
+    return _admin_page["html"]
+
+
+def _s3_json(key, default=None):
+    try:
+        obj = aws_common.client("s3").get_object(Bucket=os.environ["BUCKET_NAME"], Key=key)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return default
+
+
+def _admin_api(path, method, event, headers):
+    import config_store
+    params, _missing = aws_common.get_parameters(ADMIN_PARAMS)
+    expected = params.get("ADMIN_TOKEN", "")
+    if not expected:
+        return _json(503, {"error": "ADMIN_TOKEN er ikke satt i Parameter Store"})
+    if not _token_ok(headers.get("x-admin-token", ""), expected):
+        return _json(401, {"error": "Feil eller manglende admin-nøkkel"})
+
+    s3 = aws_common.client("s3")
+    bucket = os.environ["BUCKET_NAME"]
+
+    if path == "/api/config" and method == "GET":
+        cfg = config_store.load(s3, bucket)
+        if cfg is not None:
+            return _json(200, {"config": cfg, "stored": True})
+        cfg = config_store.bootstrap(children_spec=params.get("CHILDREN", ""),
+                                     school_year=params.get("CHILDREN_SCHOOL_YEAR"),
+                                     feeds_spec=params.get("CALENDAR_FEEDS", ""),
+                                     design_options=os.environ.get("DESIGN_OPTIONS", ""))
+        return _json(200, {"config": cfg, "stored": False})
+
+    if path == "/api/config" and method == "PUT":
+        try:
+            body = event.get("body") or ""
+            if event.get("isBase64Encoded"):
+                body = base64.b64decode(body).decode("utf-8")
+            saved = config_store.save(s3, bucket, json.loads(body))
+        except config_store.ConfigError as e:
+            return _json(400, {"error": str(e)})
+        except ValueError:
+            return _json(400, {"error": "Ugyldig JSON"})
+        return _json(200, {"config": saved, "stored": True})
+
+    if path == "/api/status" and method == "GET":
+        return _json(200, {"meta": _s3_json(META_KEY, {}), "feeds": _s3_json(FEEDS_STATE_KEY, {}),
+                           "letters": _s3_json(LETTERS_LOG_KEY, [])[-10:]})
+
+    if path == "/api/preview" and method == "GET":
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=IMAGES["/image.png"][0])
+        except ClientError as e:
+            if _is_missing(e):
+                return _json(404, {"error": "Ingen bilde ennå"})
+            raise
+        return _resp(200, base64.b64encode(obj["Body"].read()).decode("ascii"), "image/png", b64=True)
+
+    if path == "/api/render" and method == "POST":
+        ok, _detail = _invoke_render("Event", extra={"force_feeds": True})
+        return _json(202 if ok else 502, {"status": "started" if ok else "error"})
+
+    return _json(404, {"error": "Ukjent forespørsel"})
+
+
 def handler(event, context):
     try:
         return _handle(event, context)
@@ -267,6 +344,11 @@ def _handle(event, context):
 
     if path == "/" and method == "GET":
         return _resp(200, "weekcalendar OK")
+
+    if path == "/admin" and method == "GET":
+        return _resp(200, _admin_html(), "text/html; charset=utf-8")
+    if path.startswith("/api/"):
+        return _admin_api(path, method, event, headers)
 
     known = set(IMAGES) | {"/status", "/render", "/upload"}
     if path not in known:

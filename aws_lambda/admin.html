@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Ukekalender · admin</title>
+<style>
+  :root {
+    --bg: #f4f3ef; --card: #ffffff; --ink: #1b1b1b; --muted: #6b6b66; --line: #e3e1da;
+    --accent: #1f6f4a; --accent-ink: #ffffff; --warn: #b3261e;
+    --c-black: #111; --c-red: #e02020; --c-green: #1fa24a; --c-blue: #1f4fe0; --c-yellow: #f2d21b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151614; --card: #1f201d; --ink: #ecebe6; --muted: #a3a29b; --line: #34352f; --accent: #3fb07a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 14px 16px 8px;
+           display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; }
+  header .who { color: var(--muted); font-size: 13px; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 96px; }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line);
+             display: grid; grid-template-columns: repeat(5, 1fr); padding-bottom: env(safe-area-inset-bottom); z-index: 6; }
+  nav.tabs button { border: 0; background: none; color: var(--muted); padding: 9px 2px 10px; font-size: 11.5px; }
+  nav.tabs button .ico { display: block; font-size: 19px; line-height: 1.2; }
+  nav.tabs button.on { color: var(--accent); font-weight: 600; }
+  @media (min-width: 820px) {
+    nav.tabs { position: static; max-width: 760px; margin: 12px auto 0; border: 1px solid var(--line); border-radius: 12px; }
+    main { padding-bottom: 40px; }
+  }
+  section { display: none; } section.on { display: block; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row.space { justify-content: space-between; }
+  .chip { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; align-items: center; justify-content: center;
+          font-weight: 700; font-size: 13px; flex: none; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--bg);
+         border: 1px solid var(--line); color: var(--muted); margin: 2px 4px 2px 0; }
+  .tag.group { border-color: var(--accent); color: var(--accent); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  button.btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px;
+               padding: 8px 12px; font: inherit; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.link { border: 0; background: none; color: var(--accent); padding: 4px; font: inherit; }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 7px 9px; width: 100%; }
+  label.f { display: block; font-size: 12.5px; color: var(--muted); margin: 8px 0 3px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .preview { width: 100%; border-radius: 8px; border: 1px solid var(--line); image-rendering: pixelated; display: block; }
+  .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  .stat div { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .stat b { display: block; font-size: 18px; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .rule { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center;
+          padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .rule:last-child { border-bottom: 0; }
+  .rule .kw { font-weight: 600; font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; }
+  .rule .what { font-size: 13px; color: var(--muted); grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  .switch { position: relative; width: 44px; height: 26px; flex: none; }
+  .switch input { display: none; }
+  .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 13px; transition: .15s; }
+  .switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px;
+                        background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { left: 21px; }
+  .toggle-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .toggle-row:last-child { border-bottom: 0; }
+  .toggle-row .t { font-weight: 600; } .toggle-row .d { font-size: 13px; color: var(--muted); }
+  .search { margin-bottom: 8px; }
+  .warn { color: var(--warn); font-size: 12.5px; }
+  dialog { border: 0; border-radius: 14px; padding: 0; width: min(520px, 94vw); background: var(--card); color: var(--ink); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog .head { padding: 14px 16px; border-bottom: 1px solid var(--line); font-weight: 700; }
+  dialog .body { padding: 6px 16px 14px; }
+  dialog .foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+  .palette { display: flex; gap: 8px; margin-top: 4px; }
+  .palette button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; }
+  .palette button.on { border-color: var(--accent); outline: 2px solid var(--card); outline-offset: -4px; }
+  .toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+           padding: 8px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: .2s; pointer-events: none; z-index: 20; }
+  .toast.on { opacity: 1; }
+  .list-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .list-item:last-child { border-bottom: 0; }
+  .mock { background: #fff4c2; color: #5c4a00; border: 1px solid #ecd36a; border-radius: 10px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; }
+
+  .savebar { position: fixed; left: 0; right: 0; bottom: 62px; display: none; justify-content: center; z-index: 7; padding: 0 16px; }
+  .savebar.on { display: flex; }
+  .savebar button { box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+  @media (min-width: 820px) { .savebar { bottom: 16px; } }
+  .login { max-width: 420px; margin: 40px auto; }
+  .row.wrap { flex-wrap: wrap; }
+  .danger { color: var(--warn) !important; }
+</style>
+</head>
+<body>
+<header><h1>Ukekalender</h1><span class="who" id="who">admin</span></header>
+<main>
+  <div id="login" class="card login" style="display:none">
+    <h2 style="margin-top:4px">Logg inn</h2>
+    <p class="hint">Lim inn admin-nøkkelen (ADMIN_TOKEN). Den huskes i denne nettleseren.</p>
+    <input id="key" type="password" autocomplete="off" placeholder="admin-nøkkel">
+    <p style="margin-top:10px"><button class="btn primary" onclick="login()">Logg inn</button></p>
+    <p class="warn" id="login-err"></p>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="mock" id="notstored" style="display:none">Innstillingene er hentet fra Google-arket og Parameter Store.
+      Sjekk dem, og trykk <b>Lagre</b> for å ta dem i bruk. Til da brukes Google-arket som før.</div>
+
+    <section id="status" class="on">
+      <h2>Skjermen nå</h2>
+      <img class="preview" id="preview" alt="Siste kalenderbilde">
+      <div class="stat">
+        <div><b id="st-time">–</b><span>Sist laget</span></div>
+        <div><b id="st-batt">–</b><span>Batteri</span></div>
+        <div><b id="st-events">–</b><span>Hendelser</span></div>
+      </div>
+      <div class="card small" id="st-list"></div>
+      <h2>Siste brev lest</h2>
+      <div class="card" id="letters"></div>
+      <button class="btn" onclick="renderNow()">Lag nytt bilde nå</button>
+    </section>
+
+    <section id="familie">
+      <h2>Familie</h2>
+      <p class="hint">Fargen og bokstaven vises som merke på skjermen. Ordene kobler hendelser til personen.
+        Trinn og grupper brukes når skolebrev leses.</p>
+      <div class="card"><div class="row space"><span>Trinnene gjelder skoleåret som startet</span>
+        <input id="schoolyear" type="number" style="width:90px" onchange="cfg.school_year=+this.value;dirty()"></div></div>
+      <div id="people"></div>
+      <button class="btn" onclick="editPerson(-1)">+ Legg til person</button>
+    </section>
+
+    <section id="regler">
+      <h2>Ikoner og regler</h2>
+      <p class="hint">Når en hendelse inneholder ordet, får den ikonet og/eller merket. «Fjern ordet» tar ordet ut av teksten.
+        Ikonnavn finner du på <a href="https://lucide.dev/icons" target="_blank" rel="noopener">lucide.dev/icons</a>.</p>
+      <input class="search" placeholder="Søk i regler …" oninput="renderRules(this.value)">
+      <div class="card" id="rules"></div>
+      <button class="btn" onclick="editRule(-1)">+ Ny regel</button>
+    </section>
+
+    <section id="abonnement">
+      <h2>Kalenderabonnement</h2>
+      <p class="hint">Hendelser fra disse kalenderne kopieres inn i familiekalenderen (sjekkes hver 6. time og når du lagrer).</p>
+      <div id="feeds"></div>
+      <button class="btn" onclick="editFeed(-1)">+ Legg til kalender</button>
+    </section>
+
+    <section id="visning">
+      <h2>Visning</h2>
+      <div class="card" id="toggles"></div>
+      <div class="card"><div class="grid2">
+        <div><label class="f">Kveldsmodus fra kl.</label><select id="evh" onchange="cfg.view.evening_hour=+this.value;dirty()"></select></div>
+        <div><label class="f">Antall dager hentet</label><select id="days" onchange="cfg.view.days=+this.value;dirty()"></select></div>
+      </div>
+      <p class="hint" style="margin-top:10px">Rammen oppdaterer seg til tidene i <code>secrets.py</code> (UPDATE_TIMES).</p></div>
+      <p class="hint"><button class="link" onclick="logout()">Logg ut på denne enheten</button></p>
+    </section>
+  </div>
+</main>
+
+<div class="savebar" id="savebar"><button class="btn primary" onclick="saveAll()">Lagre endringer</button></div>
+<nav class="tabs" id="tabs" style="display:none">
+  <button data-t="status" class="on"><span class="ico">🖼️</span>Status</button>
+  <button data-t="familie"><span class="ico">👨‍👩‍👧‍👦</span>Familie</button>
+  <button data-t="regler"><span class="ico">🏷️</span>Regler</button>
+  <button data-t="abonnement"><span class="ico">📅</span>Abonnement</button>
+  <button data-t="visning"><span class="ico">⚙️</span>Visning</button>
+</nav>
+
+<dialog id="dlg"><div class="head" id="dlg-h"></div><div class="body" id="dlg-b"></div>
+  <div class="foot"><button class="btn danger" id="dlg-del" style="margin-right:auto">Slett</button>
+  <button class="btn" onclick="dlg.close()">Avbryt</button>
+  <button class="btn primary" id="dlg-ok">OK</button></div></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+const COLORS = { BLACK: "var(--c-black)", RED: "var(--c-red)", GREEN: "var(--c-green)", BLUE: "var(--c-blue)", YELLOW: "var(--c-yellow)" };
+const FG = { YELLOW: "#111", GREEN: "#111" };
+const VIEW = [
+  ["collapse", "Slå sammen gjentakende", "«Juleboden (tir–fre)» én gang i stedet for hver dag"],
+  ["month", "Månedskalender", "Nederst i det svarte feltet når det er plass"],
+  ["tomorrow", "«I morgen»", "Morgendagens avtaler i det svarte feltet når alt får plass"],
+  ["evening", "Kveldsmodus", "Om kvelden viser det store feltet morgendagen"],
+  ["advice", "Klesråd", "«Klær: vinterdress, lue og votter · Glatt?»"],
+  ["morning", "Temperatur kl. 8 i dagsoverskriftene", "I stedet for dagens maks"],
+];
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dlg = $("#dlg");
+let cfg = null, stored = false, isDirty = false;
+let KEY = "";
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2200); }
+function dirty() { isDirty = true; $("#savebar").classList.add("on"); }
+function chip(p) { return p ? `<span class="chip" style="background:${COLORS[p.color]};color:${FG[p.color] || "#fff"}">${esc(p.letter)}</span>` : ""; }
+function person(name) { return cfg.people.find((p) => p.name.toLowerCase() === String(name || "").toLowerCase()); }
+const list = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+
+// ---------- auth ----------
+function storeKey(k) { try { localStorage.setItem("wc_admin_key", k); } catch (e) {} KEY = k; }
+function readKey() { try { return localStorage.getItem("wc_admin_key") || ""; } catch (e) { return ""; } }
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Admin-Token": KEY } });
+  if (r.status === 401) { showLogin("Feil admin-nøkkel."); throw new Error("401"); }
+  return r;
+}
+function showLogin(err = "") { $("#login").style.display = ""; $("#app").style.display = "none"; $("#tabs").style.display = "none"; $("#login-err").textContent = err; }
+function login() { storeKey($("#key").value.trim()); start(); }
+function logout() { try { localStorage.removeItem("wc_admin_key"); } catch (e) {} location.reload(); }
+
+window.addEventListener("beforeunload", (e) => { if (isDirty) { e.preventDefault(); e.returnValue = ""; } });
+
+document.querySelectorAll("nav.tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav.tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("on", s.id === b.dataset.t));
+  window.scrollTo(0, 0);
+});
+
+// ---------- load ----------
+async function start() {
+  const m = location.hash.match(/(?:key|nokkel|nøkkel)=([^&]+)/);
+  if (m) { storeKey(decodeURIComponent(m[1])); history.replaceState(null, "", location.pathname); }
+  KEY = KEY || readKey();
+  if (!KEY) return showLogin();
+  let r;
+  try { r = await api("/api/config"); } catch (e) { return; }
+  if (!r.ok) { const j = await r.json().catch(() => ({})); return showLogin(j.error || "Kunne ikke hente innstillinger."); }
+  const j = await r.json();
+  cfg = j.config; stored = j.stored;
+  $("#login").style.display = "none"; $("#app").style.display = ""; $("#tabs").style.display = "";
+  $("#notstored").style.display = stored ? "none" : "";
+  if (!stored) dirty();
+  renderAll(); loadStatus();
+}
+
+function renderAll() { renderPeople(); renderRules(); renderFeeds(); renderView(); }
+
+async function loadStatus() {
+  try {
+    const r = await api("/api/status"); const j = await r.json(); const m = j.meta || {};
+    $("#st-time").textContent = m.rendered_at ? new Date(m.rendered_at).toLocaleTimeString("no", { hour: "2-digit", minute: "2-digit" }) : "–";
+    $("#st-batt").textContent = m.battery != null ? m.battery + " %" : "–";
+    $("#st-events").textContent = m.event_count ?? "–";
+    const when = m.rendered_at ? new Date(m.rendered_at).toLocaleString("no", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "aldri";
+    const feeds = j.feeds && j.feeds.at ? new Date(j.feeds.at * 1000).toLocaleString("no", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+    const errs = (m.errors || []).length ? `<div class="warn">${(m.errors || []).map(esc).join("<br>")}</div>` : "";
+    $("#st-list").innerHTML = `
+      <div class="row space"><span>Sist laget</span><span class="muted">${esc(when)} · ${esc(m.trigger || "")}</span></div>
+      <div class="row space"><span>Været</span><span class="muted">${esc(m.weather_days ?? "–")} dager</span></div>
+      <div class="row space"><span>Abonnement synket</span><span class="muted">${esc(feeds)}</span></div>
+      ${(m.missing_params || []).length ? `<div class="row space"><span>Mangler</span><span class="muted">${(m.missing_params || []).map(esc).join(", ")}</span></div>` : ""}
+      ${errs}`;
+    const L = j.letters || [];
+    $("#letters").innerHTML = L.length ? L.slice().reverse().map((l) => `<div class="list-item"><div style="flex:1">
+      <div>${esc(l.message)}</div><div class="small muted">${esc(new Date(l.at * 1000).toLocaleString("no", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</div></div></div>`).join("")
+      : `<div class="muted small">Ingen brev lest ennå.</div>`;
+    const p = await api("/api/preview");
+    if (p.ok) $("#preview").src = URL.createObjectURL(await p.blob());
+  } catch (e) { /* status is best-effort */ }
+}
+
+async function renderNow() {
+  const r = await api("/api/render", { method: "POST" });
+  toast(r.ok ? "Lager nytt bilde – oppdaterer om 20 sek" : "Kunne ikke starte");
+  if (r.ok) setTimeout(loadStatus, 20000);
+}
+
+async function saveAll() {
+  const r = await api("/api/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(j.error || "Kunne ikke lagre");
+  cfg = j.config; stored = true; isDirty = false;
+  $("#savebar").classList.remove("on"); $("#notstored").style.display = "none";
+  renderAll(); toast("Lagret – vises ved neste oppdatering");
+}
+
+// ---------- render ----------
+function renderPeople() {
+  $("#schoolyear").value = cfg.school_year;
+  $("#people").innerHTML = cfg.people.map((p, i) => `
+    <div class="card">
+      <div class="row space">
+        <div class="row">${chip(p)}<div><b>${esc(p.name)}</b>
+          <div class="small muted">${p.grade ? p.grade + ". trinn" : (p.kind || "person")}</div></div></div>
+        <button class="link" onclick="editPerson(${i})">Endre</button>
+      </div>
+      <div style="margin-top:6px">${p.groups.map((g) => `<span class="tag group">${esc(g)}</span>`).join("")}
+        ${p.words.map((w) => `<span class="tag">${esc(w)}</span>`).join("")}</div>
+    </div>`).join("");
+}
+
+function ruleText(r) {
+  const p = r.tag && person(r.tag);
+  return `${r.icon ? `<span>ikon: <b>${esc(r.icon)}</b></span>` : ""}${p ? `<span class="row" style="gap:4px">merke: ${chip(p)}</span>` : ""}
+          ${r.remove ? `<span>fjerner ordet</span>` : ""}`;
+}
+function renderRules(q = "") {
+  q = q.toLowerCase();
+  $("#rules").innerHTML = cfg.rules.map((r, i) => [r, i])
+    .filter(([r]) => !q || r.word.toLowerCase().includes(q) || (r.icon || "").includes(q))
+    .map(([r, i]) => `<div class="rule"><span class="kw">${esc(r.word)}</span>
+      <button class="link" onclick="editRule(${i})">Endre</button><div class="what">${ruleText(r)}</div></div>`).join("")
+    || `<div class="muted small">Ingen regler.</div>`;
+}
+
+function renderFeeds() {
+  $("#feeds").innerHTML = cfg.feeds.map((f, i) => `
+    <div class="card">
+      <div class="row space"><b>${esc(f.name)}</b>
+        <label class="switch"><input type="checkbox" ${f.on ? "checked" : ""} onchange="cfg.feeds[${i}].on=this.checked;dirty()"><span></span></label></div>
+      <div class="small muted" style="word-break:break-all;margin:4px 0">${esc(f.url)}</div>
+      <div class="row space"><div class="row" style="gap:4px">${f.tags.map((t) => chip(person(t))).join("")}
+        ${f.icon ? `<span class="small muted" style="margin-left:6px">ikon: ${esc(f.icon)}</span>` : ""}</div>
+        <button class="link" onclick="editFeed(${i})">Endre</button></div>
+    </div>`).join("") || `<div class="card muted small">Ingen abonnement.</div>`;
+}
+
+function renderView() {
+  $("#toggles").innerHTML = VIEW.map(([k, t, d]) => `
+    <div class="toggle-row"><div><div class="t">${t}</div><div class="d">${d}</div></div>
+      <label class="switch"><input type="checkbox" ${cfg.view.options.includes(k) ? "checked" : ""}
+        onchange="setOpt('${k}', this.checked)"><span></span></label></div>`).join("");
+  $("#evh").innerHTML = [15, 16, 17, 18, 19, 20].map((h) => `<option value="${h}" ${h === cfg.view.evening_hour ? "selected" : ""}>${h}:00</option>`).join("");
+  $("#days").innerHTML = [7, 10, 14, 21].map((d) => `<option ${d === cfg.view.days ? "selected" : ""}>${d}</option>`).join("");
+}
+function setOpt(k, on) {
+  const o = new Set(cfg.view.options); on ? o.add(k) : o.delete(k); cfg.view.options = [...o]; dirty();
+}
+
+// ---------- dialogs ----------
+function openDialog(title, body, onOk, onDelete) {
+  $("#dlg-h").textContent = title; $("#dlg-b").innerHTML = body;
+  $("#dlg-ok").onclick = () => { if (onOk() !== false) { dlg.close(); dirty(); renderAll(); } };
+  $("#dlg-del").style.display = onDelete ? "" : "none";
+  $("#dlg-del").onclick = () => { if (confirm("Slette?")) { onDelete(); dlg.close(); dirty(); renderAll(); } };
+  dlg.showModal();
+}
+function palette(sel) {
+  return `<div class="palette" id="pal">${Object.keys(COLORS).map((c) =>
+    `<button type="button" data-c="${c}" style="background:${COLORS[c]}" class="${c === sel ? "on" : ""}" title="${c}"
+      onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));this.classList.add('on')"></button>`).join("")}</div>`;
+}
+const val = (id) => document.getElementById(id).value;
+
+function editPerson(i) {
+  const p = i >= 0 ? cfg.people[i] : { name: "", letter: "", color: "BLACK", kind: "barn", grade: null, groups: [], words: [] };
+  openDialog(i >= 0 ? `Endre ${p.name}` : "Ny person", `
+    <div class="grid2"><div><label class="f">Navn</label><input id="p-name" value="${esc(p.name)}"></div>
+      <div><label class="f">Bokstav</label><input id="p-letter" value="${esc(p.letter)}" maxlength="2"></div></div>
+    <label class="f">Farge på merket</label>${palette(p.color)}
+    <div class="grid2"><div><label class="f">Type</label><select id="p-kind">
+      ${["barn", "voksen", ""].map((k) => `<option value="${k}" ${p.kind === k ? "selected" : ""}>${k || "–"}</option>`).join("")}</select></div>
+      <div><label class="f">Trinn (dette skoleåret)</label><input id="p-grade" type="number" min="1" max="13" value="${p.grade || ""}"></div></div>
+    <label class="f">Grupper (skole, lag) – komma mellom</label><input id="p-groups" value="${esc(p.groups.join(", "))}" placeholder="f.eks. Sild">
+    <label class="f">Ord som betyr denne personen – komma mellom</label><input id="p-words" value="${esc(p.words.join(", "))}">
+    <p class="hint">Trinnet går automatisk opp hver august.</p>`,
+    () => {
+      const name = val("p-name").trim(); if (!name) { toast("Navn mangler"); return false; }
+      const np = { name, letter: (val("p-letter").trim() || name[0]).toUpperCase(),
+        color: ($("#pal .on") || {}).dataset?.c || "BLACK", kind: val("p-kind"),
+        grade: val("p-grade") ? +val("p-grade") : null, groups: list(val("p-groups")), words: list(val("p-words")) };
+      if (i >= 0) {
+        const old = cfg.people[i].name;
+        if (old !== name) {   // keep references in rules and feeds
+          cfg.rules.forEach((r) => { if (r.tag === old) r.tag = name; });
+          cfg.feeds.forEach((f) => { f.tags = f.tags.map((t) => t === old ? name : t); });
+        }
+        cfg.people[i] = np;
+      } else cfg.people.push(np);
+    },
+    i >= 0 ? () => {
+      const old = cfg.people[i].name; cfg.people.splice(i, 1);
+      cfg.rules.forEach((r) => { if (r.tag === old) r.tag = ""; });
+      cfg.feeds.forEach((f) => { f.tags = f.tags.filter((t) => t !== old); });
+    } : null);
+}
+
+function editRule(i) {
+  const r = i >= 0 ? cfg.rules[i] : { word: "", icon: "", tag: "", remove: false };
+  openDialog(i >= 0 ? `Regel: ${r.word}` : "Ny regel", `
+    <label class="f">Når teksten inneholder</label><input id="r-word" value="${esc(r.word)}">
+    <label class="f">Vis ikon (navn fra lucide.dev, f.eks. soccer, cake, school)</label><input id="r-icon" value="${esc(r.icon)}">
+    <label class="f">Merk med person</label><select id="r-tag"><option value="">– ingen –</option>
+      ${cfg.people.map((p) => `<option ${p.name === r.tag ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+    <div class="toggle-row"><div><div class="t">Fjern ordet fra teksten</div>
+      <div class="d">«Movar: Restavfall» → «Restavfall»</div></div>
+      <label class="switch"><input id="r-remove" type="checkbox" ${r.remove ? "checked" : ""}><span></span></label></div>`,
+    () => {
+      const word = val("r-word").trim(); if (!word) { toast("Ord mangler"); return false; }
+      const nr = { word, icon: val("r-icon").trim().toLowerCase(), tag: val("r-tag"), remove: $("#r-remove").checked };
+      i >= 0 ? (cfg.rules[i] = nr) : cfg.rules.push(nr);
+    },
+    i >= 0 ? () => cfg.rules.splice(i, 1) : null);
+}
+
+function editFeed(i) {
+  const f = i >= 0 ? cfg.feeds[i] : { name: "", url: "", tags: [], icon: "", on: true };
+  openDialog(i >= 0 ? "Endre kalender" : "Ny kalender", `
+    <label class="f">Navn</label><input id="f-name" value="${esc(f.name)}" placeholder="f.eks. Peter – JR IK">
+    <label class="f">Adresse (.ics eller webcal://)</label><input id="f-url" value="${esc(f.url)}" placeholder="webcal://…">
+    <label class="f">Ikon (valgfritt, f.eks. soccer)</label><input id="f-icon" value="${esc(f.icon)}">
+    <label class="f">Merk hendelsene med</label>
+    <div class="row wrap" style="gap:6px;margin-top:4px">${cfg.people.map((p) =>
+      `<label class="row tag" style="gap:6px;padding:4px 8px"><input type="checkbox" class="f-tag" value="${esc(p.name)}" style="width:auto"
+        ${f.tags.includes(p.name) ? "checked" : ""}>${esc(p.name)}</label>`).join("")}</div>
+    <p class="hint">Tips: på fotmob.com → laget → «Synkroniser kalender» → kopier lenken.</p>`,
+    () => {
+      const url = val("f-url").trim(); if (!url) { toast("Adresse mangler"); return false; }
+      const nf = { name: val("f-name").trim() || url, url, icon: val("f-icon").trim().toLowerCase(), on: f.on,
+        tags: [...document.querySelectorAll(".f-tag:checked")].map((c) => c.value) };
+      i >= 0 ? (cfg.feeds[i] = nf) : cfg.feeds.push(nf);
+    },
+    i >= 0 ? () => cfg.feeds.splice(i, 1) : null);
+}
+
+start();
+</script>
+</body>
+</html>
