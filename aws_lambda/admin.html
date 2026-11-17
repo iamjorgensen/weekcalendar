@@ -151,6 +151,12 @@
       <p class="hint">Hendelser fra disse kalenderne kopieres inn i familiekalenderen (sjekkes hver 6. time og når du lagrer).</p>
       <div id="feeds"></div>
       <button class="btn" onclick="editFeed(-1)">+ Legg til kalender</button>
+
+      <h2>Spond</h2>
+      <p class="hint">Henter arrangementer fra Spond-gruppene dine. Avlyste arrangementer fjernes fra kalenderen.
+        Krever SPOND_EMAIL og SPOND_PASSWORD i Parameter Store.</p>
+      <div class="card" id="spond"></div>
+      <button class="btn" onclick="loadSpondGroups()">Hent grupper fra Spond</button>
     </section>
 
     <section id="visning">
@@ -261,7 +267,7 @@ async function start() {
   renderAll(); loadStatus();
 }
 
-function renderAll() { renderPeople(); renderRules(); renderFeeds(); renderView(); }
+function renderAll() { renderPeople(); renderRules(); renderFeeds(); renderSpond(); renderView(); }
 
 async function loadStatus() {
   try {
@@ -341,6 +347,49 @@ function renderFeeds() {
         ${f.icon ? `<span class="small muted" style="margin-left:6px">ikon: ${esc(f.icon)}</span>` : ""}</div>
         <button class="link" onclick="editFeed(${i})">Endre</button></div>
     </div>`).join("") || `<div class="card muted small">Ingen abonnement.</div>`;
+}
+
+function renderSpond() {
+  cfg.spond = cfg.spond || { on: false, groups: [] };
+  const sp = cfg.spond;
+  $("#spond").innerHTML = `
+    <div class="toggle-row"><div><div class="t">Hent fra Spond</div><div class="d">${sp.groups.filter((g) => g.on).length} av ${sp.groups.length} grupper valgt</div></div>
+      <label class="switch"><input type="checkbox" ${sp.on ? "checked" : ""} onchange="cfg.spond.on=this.checked;dirty();renderSpond()"><span></span></label></div>
+    ${sp.groups.map((g, i) => `
+      <div class="toggle-row"><div style="flex:1"><div class="t">${esc(g.name)}</div>
+        <div class="row" style="gap:4px;margin-top:2px">${g.tags.map((t) => chip(person(t))).join("")}
+          ${g.icon ? `<span class="small muted">ikon: ${esc(g.icon)}</span>` : ""}
+          <button class="link" onclick="editSpond(${i})">Endre</button></div></div>
+        <label class="switch"><input type="checkbox" ${g.on ? "checked" : ""} onchange="cfg.spond.groups[${i}].on=this.checked;dirty();renderSpond()"><span></span></label></div>`).join("")
+      || `<div class="muted small" style="padding:8px 0">Ingen grupper hentet ennå.</div>`}`;
+}
+
+async function loadSpondGroups() {
+  toast("Henter grupper fra Spond …");
+  const r = await api("/api/spond/groups"); const j = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(j.error || "Kunne ikke hente grupper");
+  cfg.spond = cfg.spond || { on: false, groups: [] };
+  let added = 0;
+  for (const g of j.groups || []) {
+    if (!cfg.spond.groups.find((x) => x.id === g.id)) { cfg.spond.groups.push({ id: g.id, name: g.name, tags: [], icon: "", on: false }); added++; }
+  }
+  if (added) dirty();
+  renderSpond(); toast(added ? `${added} nye grupper – slå på de du vil ha` : "Ingen nye grupper");
+}
+
+function editSpond(i) {
+  const g = cfg.spond.groups[i];
+  openDialog(`Spond: ${g.name}`, `
+    <label class="f">Merk arrangementene med</label>
+    <div class="row wrap" style="gap:6px;margin-top:4px">${cfg.people.map((p) =>
+      `<label class="row tag" style="gap:6px;padding:4px 8px"><input type="checkbox" class="s-tag" value="${esc(p.name)}" style="width:auto"
+        ${g.tags.includes(p.name) ? "checked" : ""}>${esc(p.name)}</label>`).join("")}</div>
+    <label class="f">Ikon (valgfritt, f.eks. soccer)</label><input id="s-icon" value="${esc(g.icon)}">`,
+    () => {
+      g.tags = [...document.querySelectorAll(".s-tag:checked")].map((c) => c.value);
+      g.icon = val("s-icon").trim().toLowerCase();
+    },
+    () => cfg.spond.groups.splice(i, 1));
 }
 
 function renderView() {

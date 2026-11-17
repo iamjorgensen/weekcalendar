@@ -175,7 +175,7 @@ def render(main, mappings, data, days, errors):
 FEEDS_STATE_KEY = CACHE_PREFIX + "feeds_sync.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
-FEEDS_CODE_VERSION = "3"   # 3: feed icon stored on the events
+FEEDS_CODE_VERSION = "4"   # 4: Spond
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 
@@ -186,18 +186,22 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
     Returns a short status dict for meta.json, or None when nothing was done.
     """
     import hashlib
-    params, _missing = aws_common.get_parameters(["CALENDAR_FEEDS", "GOOGLE_SA_JSON", "CALENDAR_ID"])
+    params, _missing = aws_common.get_parameters(["CALENDAR_FEEDS", "GOOGLE_SA_JSON", "CALENDAR_ID",
+                                                  "SPOND_EMAIL", "SPOND_PASSWORD"])
+    spond_cfg = (cfg or {}).get("spond") or {}
+    spond_groups = [g for g in spond_cfg.get("groups", []) if g.get("on")] if spond_cfg.get("on") else []
     if cfg is not None:
         import config_store
         spec = config_store.feeds_spec(cfg)      # the admin page's feeds
     else:
         spec = params.get("CALENDAR_FEEDS") or ""
-    if not spec.strip():
+    if not spec.strip() and not spond_groups:
         return None
     if not params.get("GOOGLE_SA_JSON") or not params.get("CALENDAR_ID"):
         errors.append("feeds: GOOGLE_SA_JSON/CALENDAR_ID mangler")
         return None
-    spec_hash = hashlib.sha1((FEEDS_CODE_VERSION + "\n" + spec).encode("utf-8")).hexdigest()
+    spec_hash = hashlib.sha1((FEEDS_CODE_VERSION + "\n" + spec + "\n" +
+                              json.dumps(spond_groups, sort_keys=True)).encode("utf-8")).hexdigest()
     state = {}
     try:
         state = json.loads(s3.get_object(Bucket=bucket, Key=FEEDS_STATE_KEY)["Body"].read())
@@ -230,6 +234,23 @@ def sync_calendar_feeds(s3, bucket, errors, force=False, cfg=None):
         except Exception as e:
             logger.exception("Feed sync failed for %s", fid)
             errors.append(f"feed {fid}: {e}")
+    if spond_groups:
+        import spond_client
+        try:
+            if not params.get("SPOND_EMAIL") or not params.get("SPOND_PASSWORD"):
+                raise spond_client.SpondError("SPOND_EMAIL/SPOND_PASSWORD mangler i Parameter Store")
+            token = spond_client.login(params["SPOND_EMAIL"], params["SPOND_PASSWORD"])
+            for g in spond_groups:
+                fid = "spond-" + g["id"][:16]
+                try:
+                    evs = spond_client.to_feed_events(spond_client.events(token, g["id"]))
+                    result[fid] = feeds.sync_events(session, params["CALENDAR_ID"], evs, g.get("tags", []), fid,
+                                                    today, days_ahead=90, icon=g.get("icon", ""))
+                except Exception as e:
+                    logger.exception("Spond group sync failed")
+                    errors.append(f"spond {g.get('name')}: {e}")
+        except Exception as e:
+            errors.append(f"spond: {e}")
     try:
         s3.put_object(Bucket=bucket, Key=FEEDS_STATE_KEY,
                       Body=json.dumps({"at": time.time(), "spec": spec_hash, "result": result}).encode("utf-8"))

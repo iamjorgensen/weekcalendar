@@ -216,10 +216,19 @@ def _ours(session, calendar_id, fid, since):
 
 
 def sync_feed(session, calendar_id, ics_text, names, fid, today, days_ahead=365, icon=""):
-    """Returns dict with created/updated/deleted/skipped counts."""
+    """ICS text -> family calendar. Returns dict with created/updated/deleted/skipped counts."""
+    return sync_events(session, calendar_id, parse_ics(ics_text), names, fid, today, days_ahead, icon)
+
+
+def sync_events(session, calendar_id, events, names, fid, today, days_ahead=365, icon=""):
+    """
+    Parsed events ({uid, summary, start, end, all_day, location, description, status}) ->
+    family calendar, scoped to `fid`. Events missing from the list (or CANCELLED) are
+    deleted if they are still in the future.
+    """
     window_end = today + timedelta(days=days_ahead)
     wanted = []
-    for ev in parse_ics(ics_text):
+    for ev in events:
         if ev.get("status") == "CANCELLED":
             continue     # cancelled: not wanted, so an existing copy is deleted below
         d = ev["start"] if ev.get("all_day") else ev["start"].astimezone(ZoneInfo(TZ)).date() \

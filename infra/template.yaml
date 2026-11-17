@@ -308,6 +308,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/CHILDREN"
                 - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/CHILDREN_SCHOOL_YEAR"
                 - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/CALENDAR_FEEDS"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/SPOND_EMAIL"
+                - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ParameterPath}/SPOND_PASSWORD"
             - Sid: AdminConfig
               Effect: Allow
               Action: [s3:GetObject, s3:PutObject]

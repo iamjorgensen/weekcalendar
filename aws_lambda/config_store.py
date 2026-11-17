@@ -147,6 +147,23 @@ def validate(cfg):
                       "icon": icon, "on": f.get("on", True) is not False})
     out["feeds"] = feeds
 
+    sp = cfg.get("spond") or {}
+    sgroups = []
+    for g in sp.get("groups") or []:
+        gid = _s(g.get("id"), 80)
+        if not gid:
+            continue
+        tags = [t for t in (_s(x, 40) for x in g.get("tags") or []) if t]
+        for t in tags:
+            if t.lower() not in names:
+                raise ConfigError(f"Spond-gruppen «{_s(g.get('name'))}» merker {t}, som ikke finnes i Familie")
+        icon = _s(g.get("icon"), 60)
+        if icon and not re.fullmatch(r"[a-z0-9_-]+", icon):
+            raise ConfigError(f"Ugyldig ikonnavn «{icon}»")
+        sgroups.append({"id": gid, "name": _s(g.get("name"), 80) or gid, "tags": tags, "icon": icon,
+                        "on": g.get("on", True) is not False})
+    out["spond"] = {"on": bool(sp.get("on")), "groups": sgroups}
+
     model = _s((cfg.get("ai") or {}).get("model")) or DEFAULT_AI["model"]
     if model not in AI_MODELS:
         raise ConfigError(f"Ukjent AI-modell: {model}")

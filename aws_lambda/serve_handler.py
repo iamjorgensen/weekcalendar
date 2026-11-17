@@ -250,7 +250,7 @@ def _serve_status():
 
 
 # ------------------------------------------------------------------ admin
-ADMIN_PARAMS = ["ADMIN_TOKEN", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CALENDAR_FEEDS"]
+ADMIN_PARAMS = ["ADMIN_TOKEN", "CHILDREN", "CHILDREN_SCHOOL_YEAR", "CALENDAR_FEEDS", "SPOND_EMAIL", "SPOND_PASSWORD"]
 FEEDS_STATE_KEY = "cache/feeds_sync.json"
 LETTERS_LOG_KEY = "log/letters.json"
 _admin_page = {"html": None}
@@ -318,6 +318,16 @@ def _admin_api(path, method, event, headers):
                 return _json(404, {"error": "Ingen bilde ennå"})
             raise
         return _resp(200, base64.b64encode(obj["Body"].read()).decode("ascii"), "image/png", b64=True)
+
+    if path == "/api/spond/groups" and method == "GET":
+        import spond_client
+        if not params.get("SPOND_EMAIL") or not params.get("SPOND_PASSWORD"):
+            return _json(400, {"error": "Legg inn SPOND_EMAIL og SPOND_PASSWORD i Parameter Store først"})
+        try:
+            token = spond_client.login(params["SPOND_EMAIL"], params["SPOND_PASSWORD"])
+            return _json(200, {"groups": spond_client.groups(token)})
+        except spond_client.SpondError as e:
+            return _json(502, {"error": str(e)})
 
     if path == "/api/render" and method == "POST":
         ok, _detail = _invoke_render("Event", extra={"force_feeds": True})
