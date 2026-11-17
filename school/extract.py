@@ -69,7 +69,7 @@ Dokumenttype: "ukebrev" er et ukentlig brev for én klasse/ett trinn (har som re
 Prioriter (viktigst først):
 1. Alt som krever handling fra foreldre: "Husk ...", møter, foreldremøter, utviklingssamtaler, påmeldinger, frister, ting som skal signeres eller betales ("meeting"/"deadline"/"bring"). En påmeldingsfrist blir en egen post på fristdagen, f.eks. "Frist: påmelding Barnas frimarked", og hvordan man melder på (e-post/lenke) står i "details".
 2. Skole og/eller SFO stengt, planleggingsdager, fridager ("closed").
-3. Tidligere slutt enn vanlig. Finn den vanlige sluttiden i timeplanen (den som går igjen flest dager) og ta bare med dager som slutter tidligere ("early_finish", title "Slutt 13:20", start = sluttiden).
+3. Tidligere slutt enn vanlig. Finn den vanlige sluttiden i timeplanen (den som går igjen flest dager) og ta bare med dager som slutter tidligere ("early_finish", title alltid på formen "Skoleslutt 13:20", start = sluttiden).
 4. Turdager, uteskole, ekskursjoner - med det som skal tas med ("trip", utstyr i "bring").
 5. Gym/kroppsøving/svømming/fysak - dager barnet trenger gymtøy ("gym").
 6. Arrangementer for barna eller familien: disco, aktivitetsdag, forestilling, marked, kostymefest, cup, konsert ("special") - med sted i "details" og det som må tas med i "bring".
@@ -268,7 +268,7 @@ def to_calendar_items(result: dict, today: date, default_for=None):
 
 def title_with_names(title, names):
     """
-    'Slutt 13:20', ['Amalie'] -> 'Slutt 13:20 Amalie'. Names go LAST, separated only by
+    'Skoleslutt 13:20', ['Amalie'] -> 'Skoleslutt 13:20 Amalie'. Names go LAST, separated only by
     spaces, so the calendar's tag mapping (which removes a name and shows it as a coloured
     tag) leaves a clean title behind.
     """
