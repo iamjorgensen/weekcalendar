@@ -110,10 +110,12 @@ def _today(img, draw, day, updated, accent=RED, battery=None, reserve_bottom=0):
 
     bottom = H - 26 - reserve_bottom
     shown = 0
-    for ev in day["events"]:
+    n = len(day["events"])
+    for k, ev in enumerate(day["events"]):
         kw = dict(size=16, icon_size=18, chip_d=18, max_lines=2, pad=3)
         h = event_row(img, draw, x0, y, x1 - x0, ev, draw_it=False, **kw)
-        if y + h > bottom:
+        # keep a line free for "+ N til" unless this is the last event
+        if y + h > bottom - (18 if k < n - 1 else 0):
             break
         event_row(img, draw, x0, y, x1 - x0, ev, color=WHITE, bg=BLACK, **kw)
         y += h
@@ -237,6 +239,16 @@ def _day_section(img, draw, x, y, w, day, measure=False, morning=False):
 
 
 # ------------------------------------------------------------------ options
+def run_label(start, end):
+    """'tir–fre', 'hele uka' or 'til 28.11' for a run of daily all-day events."""
+    wd = lambda d: WEEKDAYS_SHORT[d.weekday()].lower()
+    if (end - start).days <= 6:
+        if start.weekday() == 0 and end.weekday() >= 4:
+            return "hele uka"
+        return f"{wd(start)}–{wd(end)}"
+    return f"til {end.day}.{end.month}"
+
+
 def collapse_repeats(days, min_run=3):
     """
     All-day events with the same title on >= min_run consecutive days are shown once,
@@ -256,8 +268,8 @@ def collapse_repeats(days, min_run=3):
                 run.append(i)
                 continue
             if len(run) >= min_run:
-                end = days[run[-1]]["date"]
-                label[(run[0], title)] = f"{title} (til {WEEKDAYS_SHORT[end.weekday()].lower()} {end.day}.)"
+                start, end = days[run[0]]["date"], days[run[-1]]["date"]
+                label[(run[0], title)] = f"{title} ({run_label(start, end)})"
                 for j in run[1:]:
                     remove.setdefault(j, set()).add(title)
             if i is not None:
@@ -351,17 +363,26 @@ def render(data, opts=None):
     """
     import os
     if opts is None:
-        opts = {k: True for k in (os.environ.get("DESIGN_OPTIONS") or "").replace(" ", "").split(",") if k}
+        raw = (os.environ.get("DESIGN_OPTIONS") or "").replace("+", ",").replace(" ", ",")
+        opts = {k: True for k in raw.split(",") if k}
     img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
     days = data["days"]
     if opts.get("collapse"):
         days = collapse_repeats(days)
 
-    reserve = month_height(data["today"]) if opts.get("month") else 0
+    # The black panel fills in priority order: today's events (all of them if
+    # possible), then the month calendar, then "I morgen" - each only if it fits.
+    reserve = 0
+    if opts.get("month"):
+        scratch = Image.new("RGB", (W, H), WHITE)
+        y_full = _today(scratch, ImageDraw.Draw(scratch), days[0], "", battery=None)
+        mh = month_height(data["today"])
+        if (H - 26) - y_full >= mh + 4:
+            reserve = mh
     y_end = _today(img, draw, days[0], data.get("updated", ""), battery=data.get("battery"),
                    reserve_bottom=reserve)
-    if opts.get("month"):
+    if reserve:
         _month(draw, data["today"], {d["date"] for d in days if d["events"]}, H - 26 - reserve)
 
     list_days = days[1:]

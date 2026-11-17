@@ -100,3 +100,20 @@ def test_time_not_repeated_when_in_title():
                        dict(date=d, time="", name="Juleboden", display_text="Juleboden")]}
     evs = to_design_data(data, days=1, now=NOW)["days"][0]["events"]
     assert [(e["time"], e["title"]) for e in evs] == [("", "Juleboden"), ("09:00", "Gym"), ("", "Slutt 13:40")]
+
+
+def test_dense_options_render_and_collapse_label(monkeypatch):
+    from designs import dense
+    data = _data()
+    d0 = NOW.date()
+    for i in range(4):   # same all-day event four days in a row
+        data["events"].append(dict(date=(d0 + timedelta(days=i)).isoformat(), time="", name="Juleboden",
+                                   display_text="Juleboden"))
+    dd = to_design_data(data, days=7, now=NOW)
+    collapsed = dense.collapse_repeats(dd["days"])
+    titles0 = [e["title"] for e in collapsed[0]["events"]]
+    assert "Juleboden (tir–fre)" in titles0
+    assert all(e["title"] != "Juleboden" for day in collapsed[1:4] for e in day["events"])
+    monkeypatch.setenv("DESIGN_OPTIONS", "collapse+month+tomorrow")
+    img = dense.render(dd)
+    assert img.size == (800, 480)

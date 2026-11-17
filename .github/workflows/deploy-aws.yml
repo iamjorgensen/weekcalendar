@@ -27,7 +27,7 @@ env:
   STACK_NAME: weekcalendar
   # Always pass these explicitly: on an existing stack SAM otherwise keeps the
   # values from an earlier deploy instead of the template's new defaults.
-  PARAMS: "Design=dense RenderDays=14 EnableSchedule=false"
+  PARAMS: "Design=dense DesignOptions=collapse+month+tomorrow RenderDays=14 EnableSchedule=false"
   SAM_CLI_TELEMETRY: "0"
 
 jobs:

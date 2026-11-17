@@ -45,6 +45,12 @@ Parameters:
     Default: dense
     AllowedValues: [hero, dense, agenda, band, legacy]
     Description: Layout of the calendar image (legacy = the original Pi layout).
+  DesignOptions:
+    Type: String
+    Default: "collapse+month+tomorrow"
+    Description: >
+      Extras for the dense design, '+'-separated: collapse (repeated all-day events
+      once), month (mini calendar), tomorrow ("I morgen"), morning (08:00 temperature).
 
 Globals:
   Function:
@@ -113,6 +119,7 @@ Resources:
         Variables:
           RENDER_DAYS: !Ref RenderDays
           DESIGN: !Ref Design
+          DESIGN_OPTIONS: !Ref DesignOptions
           WORK_DIR: /tmp/weekcalendar
           GS_CACHE_PATH: /tmp/weekcalendar/cache/event_mappings_cache.json
           # The mappings cache is only used when the Google Sheet fetch fails;
