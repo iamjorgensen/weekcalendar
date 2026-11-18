@@ -337,6 +337,40 @@ def collapse_repeats(days, min_run=3):
     return out
 
 
+WX_LINE_H = 20
+
+
+def _tomorrow_weather(img, draw, w, x0, x1, y, inline_xl=None):
+    """Tomorrow's weather. As its own line at y: '[icon] 1° / -3°  [rain] 4 mm  [wind] 6 m/s N'
+    (rain only if >= 1 mm; parts dropped from the right until it fits). With inline_xl: just
+    '[icon] 1°' right-aligned on the heading line (y is then the line's vertical centre)."""
+    if not w:
+        return
+    f = f_bold(14)
+    sym = weather_icon_name(w.get("symbol"))
+    if inline_xl is not None:
+        t = f"{w['tmax']:.0f}°"
+        tx = x1 - text_w(draw, t, f)
+        if tx - 19 >= inline_xl:
+            paste_icon(img, sym, tx - 19, y - 8, 16, WHITE)
+            draw_text_top(draw, (tx, y - cap_height(draw, f) // 2), t, f, WHITE)
+        return
+    temp = f"{w['tmax']:.0f}°" + (f" / {w['tmin']:.0f}°" if w.get("tmin") is not None else "")
+    parts = [(sym, temp)]
+    if (w.get("precip") or 0) >= 1:
+        parts.append(("droplet", f"{w['precip']:.0f} mm"))
+    if w.get("wind") is not None:
+        parts.append(("wind", f"{w['wind']:.0f} m/s {w.get('wind_dir') or ''}".strip()))
+    gap = 12
+    while len(parts) > 1 and sum(19 + text_w(draw, t, f) for _i, t in parts) + gap * (len(parts) - 1) > x1 - x0:
+        parts.pop(-2 if len(parts) == 3 else -1)   # drop rain before wind
+    cx = x0
+    for ic, t in parts:
+        paste_icon(img, ic, cx - (2 if ic == sym else 0), y - 2, 16, WHITE)
+        draw_text_top(draw, (cx + 19, y), t, f, WHITE)
+        cx += 19 + text_w(draw, t, f) + gap
+
+
 def _tomorrow(img, draw, day, y, bottom, label="I morgen"):
     """'I morgen' block in the black panel. Returns True if drawn."""
     x0, x1 = 18, HERO_W - 16
@@ -347,6 +381,8 @@ def _tomorrow(img, draw, day, y, bottom, label="I morgen"):
     kw = dict(size=15, icon_size=16, chip_d=16, max_lines=1, pad=3)
     need = 4 + 8 + cap_height(draw, f_bold(15)) + 8 + sum(
         event_row(img, draw, x0, 0, x1 - x0, ev, draw_it=False, **kw) for ev in day["events"])
+    wx = day.get("weather")
+    wx_line = bool(wx) and y + need + WX_LINE_H <= bottom   # own weather line, else temp on the heading
     if y + need > bottom:
         return False
     y += 4
@@ -354,8 +390,15 @@ def _tomorrow(img, draw, day, y, bottom, label="I morgen"):
     y += 8
     fh = f_bold(15)
     d = day["date"]
-    draw_text_top(draw, (x0, y), f"{label} · {WEEKDAYS_SHORT[d.weekday()]} {d.day}.", fh, YELLOW)
+    head = f"{label} · {WEEKDAYS_SHORT[d.weekday()]} {d.day}."
+    draw_text_top(draw, (x0, y), head, fh, YELLOW)
+    if wx and not wx_line:
+        _tomorrow_weather(img, draw, wx, x0, x1, y + cap_height(draw, fh) // 2,
+                          inline_xl=x0 + text_w(draw, head, fh) + 10)
     y += cap_height(draw, fh) + 8
+    if wx_line:
+        _tomorrow_weather(img, draw, wx, x0, x1, y)
+        y += WX_LINE_H
     kw = dict(size=15, icon_size=16, chip_d=16, max_lines=1, pad=3)
     shown = 0
     for ev in day["events"]:
