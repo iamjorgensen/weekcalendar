@@ -482,7 +482,8 @@ def test_ingest_end_to_end(aws, monkeypatch):
 
     out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf", "content_type": "application/pdf"}, None)
     assert out["ok"] and out["child"] == "Amalie" and out["week"] == "2026-W47"
-    assert out["created"] == 6 and out["skipped"] == 1
+    assert out["created"] == 4 and out["skipped"] == 1      # "Slutt 13:20/13:40" only on the frame
+    assert not any(b["summary"].startswith("Slutt") for b in session.posted)
     assert "Fantes fra før: Foreldremøte (03.12)" in out["message"]
     content = fake_ai.requests[0]["messages"][0]["content"]
     assert "Amalie (6. trinn), Sigrid (3. trinn)" in content[1]["text"]
@@ -492,6 +493,24 @@ def test_ingest_end_to_end(aws, monkeypatch):
     week = stored["Amalie"]["2026-W47"]
     assert [d["end"] for d in week] == ["14:45", "14:45", "13:20", "", "13:40"]
     assert week[0]["lunch"] == "10:50" and week[3]["closed"] and week[3]["lessons"] == []
+
+
+def test_ingest_keeps_early_finish_in_calendar_without_a_timetable(aws, monkeypatch):
+    s3, ssm = aws
+    _put_params(ssm, {"GOOGLE_SA_JSON": "{}", "CALENDAR_ID": "fam@group", "CHILDREN": "Amalie:6,Sigrid:3",
+                      "CHILDREN_SCHOOL_YEAR": "2026"})
+    s3.put_object(Bucket=BUCKET, Key="inbox/a.pdf", Body=b"%PDF-1.7", ContentType="application/pdf")
+    session = FakeSession([])
+    monkeypatch.setattr(ingest_handler, "anthropic_client", lambda api_key=None: FakeAnthropic(dict(UKE47, timetable=[])))
+    monkeypatch.setattr(ingest_handler, "calendar_session", lambda sa: session)
+
+    class FixedDT(ingest_handler.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return ingest_handler.datetime(2026, 11, 16, 20, 0, tzinfo=tz)
+    monkeypatch.setattr(ingest_handler, "datetime", FixedDT)
+    out = ingest_handler.handler({"bucket": BUCKET, "key": "inbox/a.pdf"}, None)
+    assert out["ok"] and sum(b["summary"].startswith("Slutt") for b in session.posted) == 2
 
 
 def test_ingest_reports_missing_settings(aws):

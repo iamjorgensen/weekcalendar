@@ -190,6 +190,9 @@ def handler(event, context):
         logger.exception("Extraction failed")
         return _fail(f"Kunne ikke lese dokumentet: {type(e).__name__}: {e}")
 
+    timetable_days = extract.to_timetable(result) if doc_key else []
+    if timetable_days:   # early finishes are shown in the frame's "Skoledag" box, not in Google Calendar
+        items = [i for i in items if i["kind"] != "early_finish"]
     known = {n for n, _ in children}
     for i in items:
         i["for"] = [n for n in i["for"] if n in known]
@@ -225,7 +228,7 @@ def handler(event, context):
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
     _log_letter(s3, event.get("bucket"), msg, event.get("key"), usage)
     if doc_key and letter_child:   # the week's timetable for the "Skoledag" box
-        _store_timetable(s3, event.get("bucket"), letter_child, doc_key, extract.to_timetable(result))
+        _store_timetable(s3, event.get("bucket"), letter_child, doc_key, timetable_days)
     question = (result.get("dinner_question") or "").strip()
     if doc_key and question:       # shown on the frame in the evening that week
         try:
