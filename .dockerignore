@@ -21,5 +21,6 @@
 !assets/fonts/*.ttf
 !assets/icons/*.svg
 !assets/icons/*.png
+!assets/icons/LICENSE-lucide.txt
 # debug screenshots that happen to live in the icons folder
 assets/icons/debug_*

@@ -18,7 +18,7 @@ const cfg = {
            person('Oskar', 'O', 'BLUE', 'barn', 0), person('Kari', 'K', 'RED', 'voksen', 0),
            person('Lars', 'L', 'BLACK', 'voksen', 0)],
   rules: [{ word: 'middag:', icon: 'food', tag: '', remove: true },
-          { word: 'svømming', icon: 'droplet', tag: '', remove: false },
+          { word: 'svømming', icon: 'waves', tag: '', remove: false },
           { word: 'korps', icon: 'music', tag: 'Nora', remove: false },
           { word: 'håndball', icon: 'volleyball', tag: 'Oskar', remove: false }],
   feeds: [{ name: 'Herrelandslaget (fotball)', url: 'https://example.com/landslaget.ics', tags: ['Lars'], icon: 'soccer', on: true }],
@@ -43,9 +43,12 @@ const status = {
 
 (async () => {
   const browser = await chromium.launch();
+  // SCHEME=dark node docs/mockups/admin_shots.js /tmp/admin-dark.png  to check dark mode
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
-                                         isMobile: true, hasTouch: true, locale: 'nb-NO', timezoneId: 'Europe/Oslo' });
+                                         isMobile: true, hasTouch: true, locale: 'nb-NO', timezoneId: 'Europe/Oslo',
+                                         colorScheme: process.env.SCHEME === 'dark' ? 'dark' : 'light' });
   const page = await ctx.newPage();
+  await page.clock.setFixedTime(new Date((now + 180) * 1000));   // "now" for the status checks
   await page.route('https://admin.example/**', async (route) => {
     const url = new URL(route.request().url());
     const json = (o) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(o) });
@@ -67,7 +70,7 @@ const status = {
   const sheet = await (await browser.newContext({ viewport: { width: 1600, height: 884 } })).newPage();
   await sheet.setContent(`<body style="margin:0;background:#fff;display:flex;gap:4px;padding:10px">${shots.map((b) =>
     `<img style="width:390px" src="data:image/png;base64,${b.toString('base64')}">`).join('')}</body>`);
-  await sheet.screenshot({ path: path.join(OUT, 'admin.png') });
+  await sheet.screenshot({ path: process.argv[2] || path.join(OUT, 'admin.png') });
   console.log('wrote admin.png');
   await browser.close();
 })();

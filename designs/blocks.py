@@ -9,28 +9,26 @@ from designs.common import (
 def event_row(img, draw, x, y, w, ev, size=17, icon_size=18, max_lines=2,
               time_w=None, chip_d=18, draw_it=True, color=BLACK, bg=WHITE, pad=5):
     """
-    One event: [icon] [time] title........ (A)(S)
-    Returns the row height. With draw_it=False it only measures.
+    One event. Timed:   [time] [icon] title........ (A)(S)
+               All-day: [icon] title.............. (A)(S)
+    The time is right-aligned in a fixed column, so the titles of timed events share one
+    left edge; a timed event with no icon gets a small dot in the icon slot. All-day events
+    are not on the timeline and start at x, using the full width.
+    Returns the row height. With draw_it=False it only measures (same height as drawn).
     """
     fb = f_body(size)
     ft = f_tiny(size - 2)
     ch = cap_height(draw, fb)
     line_gap = int(size * 0.45)
 
-    cx = x
-    icon_slot = icon_size + 6
-    cx += icon_slot
-
     time = ev.get("time") or ""
-    tw = time_w if time_w is not None else (text_w(draw, "00:00", ft) + 8)
-    if time:
-        cx_title = cx + tw
-    else:
-        cx_title = cx
+    tw = time_w if time_w is not None else text_w(draw, "00:00", ft)
+    ix = x + tw + 7 if time else x            # icon slot
+    tx = ix + icon_size + 6                   # title
 
     chips = ev.get("people") or []
     chips_w = len(chips) * (chip_d + 3)
-    title_w = max(30, x + w - cx_title - chips_w - (4 if chips else 0))
+    title_w = max(30, x + w - tx - chips_w - (4 if chips else 0))
 
     lines = wrap(draw, ev.get("title", ""), fb, title_w, max_lines)
     block_h = ch * len(lines) + line_gap * (len(lines) - 1)
@@ -40,17 +38,18 @@ def event_row(img, draw, x, y, w, ev, size=17, icon_size=18, max_lines=2,
         return row_h
 
     top = y + (row_h - block_h) // 2
-    if ev.get("icon"):
-        paste_icon(img, ev["icon"], x, y + (row_h - icon_size) // 2, icon_size, color)
+    mid = top + ch // 2                       # icon, dot and chips centre on the first line
     if time:
-        tch = cap_height(draw, ft)
-        draw_text_top(draw, (cx, top + (ch - tch)), time, ft, color)
+        draw_text_top(draw, (x + tw - text_w(draw, time, ft), top + ch - cap_height(draw, ft)), time, ft, color)
+    drawn = ev.get("icon") and paste_icon(img, ev["icon"], ix, mid - icon_size // 2, icon_size, color)
+    if not drawn and time:
+        c = ix + icon_size // 2
+        draw.ellipse([c - 2, mid - 2, c + 2, mid + 2], fill=color)
     for i, ln in enumerate(lines):
-        draw_text_top(draw, (cx_title, top + i * (ch + line_gap)), ln, fb, color)
-    # chips centred on the first line
+        draw_text_top(draw, (tx, top + i * (ch + line_gap)), ln, fb, color)
     chip_x = x + w - chips_w + 3
     for letter, col in chips:
-        person_chip(draw, chip_x, top + ch // 2, letter, col, chip_d, bg=bg)
+        person_chip(draw, chip_x, mid, letter, col, chip_d, bg=bg)
         chip_x += chip_d + 3
     return row_h
 

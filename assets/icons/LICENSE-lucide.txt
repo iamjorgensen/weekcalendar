@@ -1,0 +1,29 @@
+Icons in this folder
+====================
+
+The .svg files here are Lucide icons (https://lucide.dev, lucide-static 0.460.0), bundled
+so the frame can draw its core icons with no network. Any other Lucide icon is downloaded
+on demand (inky_icons_package.py, pinned to the same version).
+
+skate.svg, gymnastics.svg and soccer.svg have no Lucide equivalent and were drawn for this
+project in the same style (24x24, stroke 2, round caps and joins).
+
+The .png files are older icons, used only for names that have no SVG anywhere.
+
+Lucide licence (applies to the Lucide .svg files):
+
+ISC License
+
+Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

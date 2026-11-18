@@ -100,6 +100,16 @@ def _format_birthday_display(text: str):
 
 _ai_icon_cache = None
 
+# Icon names the AI may answer with: Lucide names (lucide.dev, lucide-static 0.460.0; the frame
+# downloads any of them on demand) plus three drawn for this project.
+AI_ICON_PROMPT = (
+    "You map calendar events to icon names. Return ONLY the single most relevant lowercase icon name. "
+    "Use Lucide icon names (lucide.dev, e.g. 'utensils', 'car', 'users', 'graduation-cap', 'tree-palm'), "
+    "or one of these custom names: 'skate' (ice skating), 'gymnastics', 'soccer' (football). "
+    "Swimming is 'waves' (never 'droplet', which means rain). "
+    "The input is in Norwegian. No punctuation, no explanation."
+)
+
 
 def _load_ai_icon_cache():
     global _ai_icon_cache
@@ -149,7 +159,7 @@ def get_ai_suggested_icon(summary: str):
             messages=[
                 {
                     "role": "system", 
-                    "content": "You map calendar events to Lucide icon names. Return ONLY the single most relevant lowercase icon name (e.g. 'utensils', 'car', 'users'). Prefer filled icons that will be returned well on a e-ink screen. The input is in Norwegian. No punctuation, no explanation."
+                    "content": AI_ICON_PROMPT
                 },
                 {"role": "user", "content": f"Event: {summary}"}
             ],

@@ -4,10 +4,11 @@ Concept A2 — "Dense hero": the hero layout squeezed for maximum information.
 Differences from hero.py:
   - Today's weather: icon + temp, then morning/day/evening on ONE line, then
     precipitation + wind.
-  - Day headers are thinner: date left; waste pickup as a small icon + type
-    right after it; weather icon + max temp (+ precipitation if >= 1 mm) right.
+  - Day sections start with a rule above the heading (weekday in bold, then the date);
+    waste pickup as a small outlined tag; weather icon + max temp right (precipitation
+    >= 1 mm in blue in front of it).
   - Waste pickup events are not separate rows in the day list.
-  - Two short consecutive events share one line (no icon, time + title + people).
+  - One event per row: time (fixed column) | icon | title ... people, so titles line up.
 """
 import re
 from datetime import timedelta
@@ -18,13 +19,14 @@ from designs import hero
 from designs.blocks import event_row
 from designs.common import (
     draw_battery,
-    BLACK, RED, WHITE, YELLOW, W, H, MONTHS, WEEKDAYS, WEEKDAYS_SHORT, MONTHS_SHORT,
-    cap_height, draw_text_top, ellipsize, f_body, f_bold, f_tiny, is_red_day, paste_icon,
+    BLACK, BLUE, RED, WHITE, YELLOW, W, H, MONTHS, WEEKDAYS, WEEKDAYS_SHORT, MONTHS_SHORT,
+    cap_height, chip_ring, draw_text_top, ellipsize, f_body, f_bold, f_light, f_tiny, is_red_day, paste_icon,
     person_chip, quantize, text_w, weather_icon_name, wrap,
 )
 
 HERO_W = hero.HERO_W
-ROW = dict(size=15, icon_size=15, chip_d=16, max_lines=2, pad=3)
+ROW = dict(size=15, icon_size=16, chip_d=16, max_lines=2, pad=3)
+TODAY_ROW = dict(size=16, icon_size=20, chip_d=18, max_lines=2, pad=2)
 
 WASTE_WORDS = ("restavfall", "papir", "plast", "glass", "metall", "matavfall", "bioavfall",
                "avfall", "tømming", "movar", "søppel", "farlig avfall")
@@ -80,52 +82,62 @@ def _today_heading(draw, day, d, red, accent, x0, x1):
     return y
 
 
+def _precip_text(mm):
+    return f"{mm:.1f} mm".replace(".", ",")
+
+
+def _today_weather(img, draw, w, y, x0, x1):
+    """Big icon + temperature with condition and min below, wind (and rain if any) top right,
+    morning/day/evening in three cells, then the clothing advice. Returns y after."""
+    isz = 40
+    paste_icon(img, weather_icon_name(w.get("symbol")), x0 - 2, y, isz, WHITE)
+    f_t, f_s, f_d = f_bold(30), f_body(15), f_tiny(14)
+    tx = x0 + isz + 10
+    draw_text_top(draw, (tx, y + 1), f"{w['tmax']:.0f}°", f_t, WHITE)
+
+    # right: wind, and under it the precipitation when there is any (>= 0.1 mm)
+    right = [("wind", f"{w.get('wind', 0):.0f} m/s {w.get('wind_dir', '')}".strip(), y + 4)]
+    if (w.get("precip") or 0) >= 0.1:
+        right.append(("umbrella", _precip_text(w["precip"]), y + 24))
+    for ic, txt, ty in right:
+        rx = x1 - text_w(draw, txt, f_d)
+        draw_text_top(draw, (rx, ty), txt, f_d, WHITE)
+        paste_icon(img, ic, rx - 21, ty - 3, 16, WHITE)
+    sy = y + 1 + cap_height(draw, f_t) + 7
+    room = x1 - tx
+    if len(right) > 1:      # keep the condition line clear of the rain amount
+        room = x1 - text_w(draw, right[1][1], f_d) - 21 - 8 - tx
+    draw_text_top(draw, (tx, sy), ellipsize(draw, f"{w.get('symbol', '')}  ·  min {w['tmin']:.0f}°", f_s, room),
+                  f_s, WHITE)
+    y += isz + 10
+
+    periods = w.get("periods") or []
+    if periods:             # three equal cells with a rule above and dividers between
+        cw = (x1 - x0 + 1) / len(periods)
+        f_l, f_p = f_tiny(12), f_bold(16)
+        draw.rectangle([x0, y, x1, y], fill=WHITE)
+        for k, (label, ic, temp) in enumerate(periods):
+            cx = round(x0 + k * cw)
+            if k:
+                draw.rectangle([cx, y + 6, cx, y + 40], fill=WHITE)
+            lx = cx + (10 if k else 0)
+            draw_text_top(draw, (lx, y + 7), label, f_l, WHITE)
+            paste_icon(img, weather_icon_name(ic), lx, y + 21, 20, WHITE)
+            draw_text_top(draw, (lx + 25, y + 25), f"{temp:.0f}°", f_p, WHITE)
+        y += 48
+    if w.get("advice"):
+        f_a = f_body(14)
+        adv = re.sub(r"^Klær:\s*", "", w["advice"])
+        paste_icon(img, "shirt", x0, y - 2, 16, YELLOW)
+        draw_text_top(draw, (x0 + 22, y), ellipsize(draw, adv, f_a, x1 - x0 - 22), f_a, YELLOW)
+        y += 21
+    return y + 1
+
+
 def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, extra_lines, car=None):
     w = day.get("weather") or {}
     if w:
-        isz = 40
-        paste_icon(img, weather_icon_name(w.get("symbol")), x0 - 2, y, isz, WHITE)
-        f_t = f_bold(28)
-        tx = x0 + isz + 10
-        draw_text_top(draw, (tx, y + 1), f"{w['tmax']:.0f}°", f_t, WHITE)
-        f_s = f_body(15)
-        draw_text_top(draw, (tx, y + 1 + cap_height(draw, f_t) + 7),
-                      ellipsize(draw, f"{w.get('symbol', '')}  ·  min {w['tmin']:.0f}°", f_s, x1 - tx), f_s, WHITE)
-        y += isz + 8
-
-        # morning / day / evening on one line: "Morg. [icon] 4°", spread evenly
-        periods = w.get("periods") or []
-        if periods:
-            f_lbl, f_pt = f_tiny(13), f_bold(15)
-            short = {"Morgen": "Morg."}
-            parts = []
-            for label, ic, temp in periods:
-                lab = short.get(label, label)
-                t = f"{temp:.0f}°"
-                parts.append((lab, ic, t, text_w(draw, lab, f_lbl) + 3 + 18 + 2 + text_w(draw, t, f_pt)))
-            space = max(4, ((x1 - x0) - sum(p[3] for p in parts)) // max(1, len(parts) - 1))
-            cx = x0
-            for lab, ic, t, pw in parts:
-                draw_text_top(draw, (cx, y + 4), lab, f_lbl, WHITE)
-                lx = cx + text_w(draw, lab, f_lbl) + 3
-                paste_icon(img, weather_icon_name(ic), lx, y, 18, WHITE)
-                draw_text_top(draw, (lx + 20, y + 3), t, f_pt, WHITE)
-                cx += pw + space
-            y += 24
-
-        f_det = f_tiny(14)
-        items = [("droplet", f"{w.get('precip', 0):.1f} mm"),
-                 ("wind", f"{w.get('wind', 0):.0f} m/s {w.get('wind_dir', '')}".strip())]
-        col_w = (x1 - x0) // 2
-        for i, (ic, txt) in enumerate(items):
-            dx = x0 + i * col_w
-            paste_icon(img, ic, dx, y - 3, 16, WHITE)
-            draw_text_top(draw, (dx + 21, y), txt, f_det, WHITE)
-        y += 20
-        if w.get("advice"):
-            f_adv = f_body(14)
-            draw_text_top(draw, (x0, y), ellipsize(draw, w["advice"], f_adv, x1 - x0), f_adv, YELLOW)
-            y += 20
+        y = _today_weather(img, draw, w, y, x0, x1)
     for text in extra_lines or ():    # countdowns, clock change, dinner question (may take two lines)
         from designs.common import wrap
         f_ln = f_body(14)
@@ -148,7 +160,7 @@ def _today_body(img, draw, day, y, x0, x1, updated, battery, reserve_bottom, ext
     shown = 0
     n = len(day["events"])
     for k, ev in enumerate(day["events"]):
-        kw = dict(size=16, icon_size=18, chip_d=18, max_lines=2, pad=3)
+        kw = TODAY_ROW
         h = event_row(img, draw, x0, y, x1 - x0, ev, draw_it=False, **kw)
         # keep a line free for "+ N til" unless this is the last event
         if y + h > bottom - (18 if k < n - 1 else 0):
@@ -183,108 +195,74 @@ LOW_BATTERY = 15
 
 
 # ------------------------------------------------------------------ day list
-def _compact_width(draw, ev):
-    """Width needed to draw ev on one line without icon: 'HH:MM Title (A)(S)'."""
-    fb, ft = f_body(ROW["size"]), f_tiny(ROW["size"] - 2)
-    w = text_w(draw, ev.get("title", ""), fb)
-    if ev.get("time"):
-        w += text_w(draw, ev["time"], ft) + 5
-    n = len(ev.get("people") or [])
-    if n:
-        w += 4 + n * (ROW["chip_d"] + 2)
-    return w
-
-
-def _draw_compact(draw, x, y, row_h, ev):
-    fb, ft = f_body(ROW["size"]), f_tiny(ROW["size"] - 2)
-    ch = cap_height(draw, fb)
-    top = y + (row_h - ch) // 2
-    cx = x
-    if ev.get("time"):
-        draw_text_top(draw, (cx, top + ch - cap_height(draw, ft)), ev["time"], ft, BLACK)
-        cx += text_w(draw, ev["time"], ft) + 5
-    draw_text_top(draw, (cx, top), ev["title"], fb, BLACK)
-    cx += text_w(draw, ev["title"], fb) + 4
-    for letter, col in ev.get("people") or []:
-        person_chip(draw, cx, top + ch // 2, letter, col, ROW["chip_d"])
-        cx += ROW["chip_d"] + 2
-
-
-def _layout_rows(draw, events, w):
-    """[(kind, payload, height)] where kind is 'one' (event_row) or 'pair' (two compact events)."""
-    half = (w - 10) // 2
-    one_h = cap_height(draw, f_body(ROW["size"])) + 2 * ROW["pad"]
-    one_h = max(one_h, ROW["chip_d"] + 2 * ROW["pad"])
-    rows, i = [], 0
-    while i < len(events):
-        a = events[i]
-        b = events[i + 1] if i + 1 < len(events) else None
-        if (b is not None and not a.get("is_holiday") and not b.get("is_holiday")   # days off keep their icon
-                and _compact_width(draw, a) <= half and _compact_width(draw, b) <= half):
-            rows.append(("pair", (a, b), one_h))
-            i += 2
-            continue
-        rows.append(("one", a, event_row(None, draw, 0, 0, w, a, draw_it=False, **ROW)))
-        i += 1
-    return rows
+def _waste_tag_w(draw, ev):
+    return 17 + text_w(draw, waste_label(ev), f_tiny(12)) + 5
 
 
 def _day_section(img, draw, x, y, w, day, measure=False, morning=False):
+    """A day in the list: a rule above the heading (red on red days), 'Tor 19. nov', waste
+    pickup tags, weather right; then one row per event. Returns the height."""
     d = day["date"]
     red = is_red_day(d, day["events"])
     col = RED if red else BLACK
-    fh = f_bold(15)
-    hdr_h = cap_height(draw, fh) + 9
+    fh = f_bold(16)
+    hdr_h = cap_height(draw, fh) + 13
 
     waste = [e for e in day["events"] if is_waste(e)]
     events = [e for e in day["events"] if not is_waste(e)]
-    rows = _layout_rows(draw, events, w)
+    heights = [event_row(None, draw, 0, 0, w, e, draw_it=False, **ROW) for e in events]
     f_none = f_body(14)
-    none_h = 0 if rows else cap_height(draw, f_none) + 10   # "Ingen avtaler" keeps the days apart
-    total = hdr_h + sum(h for _, _, h in rows) + (6 if rows else 2) + none_h
+    total = hdr_h + sum(heights) + (5 if events else cap_height(draw, f_none) + 11)
     if measure:
         return total
 
-    label = day.get("label") or f"{WEEKDAYS_SHORT[d.weekday()]} {d.day}. {MONTHS_SHORT[d.month - 1]}"
-    draw_text_top(draw, (x, y + 2), label, fh, col)
-    cy_mid = y + 2 + cap_height(draw, fh) // 2
+    draw.rectangle([x, y, x + w, y + 1], fill=col)
+    ty = y + 7
+    label = day.get("label")              # e.g. "I kveld": no date
+    wd = label or WEEKDAYS_SHORT[d.weekday()]
+    draw_text_top(draw, (x, ty), wd, fh, col)
+    lx = x + text_w(draw, wd, fh) + 6
+    if not label:
+        rest, fr = f"{d.day}. {MONTHS_SHORT[d.month - 1]}", f_body(16)
+        draw_text_top(draw, (lx, ty), rest, fr, col)
+        lx += text_w(draw, rest, fr) + 6
+    cy = ty + cap_height(draw, fh) // 2
 
-    # waste pickup right after the date
-    wx = x + text_w(draw, label, fh) + 8
     f_w = f_tiny(12)
-    for e in waste:
-        paste_icon(img, "trash-2", wx, cy_mid - 7, 14, col)
-        lab = waste_label(e)
-        draw_text_top(draw, (wx + 15, cy_mid - cap_height(draw, f_w) // 2), lab, f_w, col)
-        wx += 15 + text_w(draw, lab, f_w) + 6
+    for e in waste:                       # waste pickup as a small outlined tag
+        tw = _waste_tag_w(draw, e)
+        if lx + 2 + tw > x + w:
+            break
+        draw.rounded_rectangle([lx + 2, cy - 8, lx + 2 + tw, cy + 8], 3, outline=col, width=1)
+        paste_icon(img, "trash-2", lx + 4, cy - 6, 12, col)
+        draw_text_top(draw, (lx + 19, cy - cap_height(draw, f_w) // 2), waste_label(e), f_w, col)
+        lx += tw + 6
 
-    # weather: icon + max temp (+ precipitation if notable), right-aligned
     wthr = day.get("weather")
-    if wthr:
-        f_t = f_body(14)
+    if wthr:                              # icon + temp right; rain (>= 1 mm) in blue in front
+        f_t = f_bold(14)
         txt = f"{wthr['tmax']:.0f}°"
         if morning and wthr.get("morning") is not None:
             txt = f"kl 8: {wthr['morning']:.0f}°"
-        if (wthr.get("precip") or 0) >= 1:
-            txt = f"{wthr['precip']:.0f} mm  " + txt
-        tw = text_w(draw, txt, f_t)
-        tx = x + w - tw
-        if tx - 20 > wx:
-            draw_text_top(draw, (tx, cy_mid - cap_height(draw, f_t) // 2), txt, f_t, col)
-            paste_icon(img, weather_icon_name(wthr.get("symbol")), tx - 19, cy_mid - 8, 16, col)
+        p = f"{wthr['precip']:.0f} mm" if (wthr.get("precip") or 0) >= 1 else ""
+        need = text_w(draw, txt, f_t) + 20 + (text_w(draw, p, f_w) + 6 if p else 0)
+        if p and x + w - need < lx:
+            p, need = "", text_w(draw, txt, f_t) + 20
+        if x + w - need >= lx:
+            rx = x + w - text_w(draw, txt, f_t)
+            draw_text_top(draw, (rx, cy - cap_height(draw, f_t) // 2), txt, f_t, col)
+            paste_icon(img, weather_icon_name(wthr.get("symbol")), rx - 20, cy - 8, 16, col)
+            rx -= 20
+            if p:
+                rx -= text_w(draw, p, f_w) + 6
+                draw_text_top(draw, (rx, cy - cap_height(draw, f_w) // 2), p, f_w, BLUE)
 
-    draw.rectangle([x, y + hdr_h - 3, x + w, y + hdr_h - 3], fill=col)
-    cy = y + hdr_h
-    if not rows:
-        draw_text_top(draw, (x + 2, cy + 3), "Ingen avtaler", f_none, col)
-    half = (w - 10) // 2
-    for kind, payload, h in rows:
-        if kind == "pair":
-            _draw_compact(draw, x + 2, cy, h, payload[0])
-            _draw_compact(draw, x + half + 10, cy, h, payload[1])
-        else:
-            event_row(img, draw, x, cy, w, payload, **ROW)
-        cy += h
+    yy = y + hdr_h
+    if not events:
+        draw_text_top(draw, (x, yy + 2), "Ingen avtaler", f_none, col)
+    for e, h in zip(events, heights):
+        event_row(img, draw, x, yy, w, e, **ROW)
+        yy += h
     return total
 
 
@@ -453,30 +431,58 @@ def _month(draw, today, event_dates, top):
         y += rh
 
 
-def _light_month_metrics(today, big, mid=False):
+ROLLING_WEEKS = 5
+
+
+def month_weeks(today, rolling=False):
+    """The weeks the month calendar shows: the calendar month, or (rolling) five weeks
+    starting with the current week, so there are no dead past weeks."""
     import calendar
-    weeks = len(calendar.Calendar(0).monthdatescalendar(today.year, today.month))
+    if not rolling:
+        return calendar.Calendar(0).monthdatescalendar(today.year, today.month)
+    start = today - timedelta(days=today.weekday())
+    return [[start + timedelta(days=7 * k + i) for i in range(7)] for k in range(ROLLING_WEEKS)]
+
+
+def month_heading(today, rolling=False):
+    """'November 2026', or for rolling weeks over two months 'November – desember'
+    ('Desember – januar 2027' over New Year)."""
+    if not rolling:
+        return f"{MONTHS[today.month - 1].capitalize()} {today.year}"
+    weeks = month_weeks(today, True)
+    a, b = weeks[0][0], weeks[-1][-1]
+    if (a.year, a.month) == (b.year, b.month):
+        return f"{MONTHS[a.month - 1].capitalize()} {a.year}"
+    return f"{MONTHS[a.month - 1].capitalize()} – {MONTHS[b.month - 1]}" + (f" {b.year}" if b.year != a.year else "")
+
+
+def _light_month_metrics(today, big, mid=False, rolling=False):
+    weeks = len(month_weeks(today, rolling))
     rh = 40 if big else 22 if mid else 16
     return weeks, rh, 26 + 18 + weeks * rh + 6
 
 
-def _month_light(img, draw, today, days, x, y, w, big=False, mid=False):
+WEEKDAY_HEAD = ["Ma", "Ti", "On", "To", "Fr", "Lø", "Sø"]
+
+
+def _month_light(img, draw, today, days, x, y, w, big=False, mid=False, rolling=False):
     """Month calendar on the white side. Big: week numbers and a dot per person with events.
-    Mid: the small one with more space between the weeks (above the 'Skoledag' box)."""
-    import calendar
-    from designs.common import MONTHS
-    weeks, rh, h = _light_month_metrics(today, big, mid)
+    Mid: the small one with more space between the weeks (above the 'Skoledag' box).
+    Rolling: five weeks from the current week instead of the calendar month; days already
+    past are lighter, and (big) the first of the next month gets a small month label."""
+    weeks, rh, h = _light_month_metrics(today, big, mid, rolling)
     fh = f_bold(18 if big else 15)
-    draw_text_top(draw, (x, y + 2), f"{MONTHS[today.month - 1].capitalize()} {today.year}", fh, BLACK)
+    draw_text_top(draw, (x, y + 2), ellipsize(draw, month_heading(today, rolling), fh, w), fh, BLACK)
     draw.rectangle([x, y + 22, x + w, y + 23], fill=BLACK)
     wk_w = 26 if big else 0
     cw = (w - wk_w) / 7
     f_wd = f_tiny(13 if big else 12)
     f_d = f_bold(17) if big else f_tiny(13)
+    f_past = f_body(15) if big else f_light(13)
     yy = y + 30
     if big:
         draw_text_top(draw, (x, yy), "uke", f_tiny(11), BLACK)
-    for i, wd in enumerate("MTOTFLS"):
+    for i, wd in enumerate(WEEKDAY_HEAD):
         cx = x + wk_w + i * cw + cw / 2
         draw_text_top(draw, (cx - text_w(draw, wd, f_wd) / 2, yy), wd, f_wd, RED if i >= 5 else BLACK)
     yy += 18
@@ -488,33 +494,37 @@ def _month_light(img, draw, today, days, x, y, w, big=False, mid=False):
                 if col not in people:
                     people.append(col)
         info[d["date"]] = (people, bool(d["events"]), any(e.get("is_holiday") for e in d["events"]))
-    for week in calendar.Calendar(0).monthdatescalendar(today.year, today.month):
+    for k, week in enumerate(month_weeks(today, rolling)):
         if big:
             wn = str(week[0].isocalendar()[1])
             draw_text_top(draw, (x + 2, yy + 3), wn, f_tiny(12), BLACK)
         for i, d in enumerate(week):
-            if d.month != today.month:
+            if not rolling and d.month != today.month:
                 continue
             cx = x + wk_w + i * cw + cw / 2
+            people, any_ev, off = info.get(d, ([], False, False))
+            weekend = RED if i >= 5 or off else BLACK
+            if rolling and big and d.day == 1 and k > 0:     # (not in the top row: the weekday names are there)
+                ml, fm = MONTHS_SHORT[d.month - 1], f_tiny(11)
+                draw_text_top(draw, (cx - text_w(draw, ml, fm) / 2, yy - 12), ml, fm, weekend)
             txt = str(d.day)
-            tw = text_w(draw, txt, f_d)
+            fd = f_past if rolling and d < today else f_d
+            tw = text_w(draw, txt, fd)
             th = cap_height(draw, f_d)
             if d == today:
                 pad = 4 if big else 2
                 draw.rectangle([cx - tw / 2 - pad - 2, yy - pad, cx + tw / 2 + pad + 2, yy + th + pad], fill=BLACK)
-                draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, WHITE)
+                draw_text_top(draw, (cx - tw / 2, yy), txt, fd, WHITE)
             else:
-                off = info.get(d, ([], False, False))[2]
-                draw_text_top(draw, (cx - tw / 2, yy), txt, f_d, RED if i >= 5 or off else BLACK)
-            people, any_ev, _off = info.get(d, ([], False, False))
+                draw_text_top(draw, (cx - tw / 2, yy + th - cap_height(draw, fd)), txt, fd, weekend)
             if d > today and any_ev:
-                if big and people:
-                    n = min(4, len(people))
-                    dx0 = cx - (n * 8 - 2) / 2
-                    for k, col in enumerate(people[:4]):
-                        draw.ellipse([dx0 + k * 8, yy + th + 6, dx0 + k * 8 + 6, yy + th + 12], fill=col)
-                elif big:
-                    draw.ellipse([cx - 3, yy + th + 6, cx + 3, yy + th + 12], fill=BLACK)
+                if big:
+                    cols = people[:4] or [BLACK]
+                    step = 9 if len(cols) < 4 else 8          # four dots still stay inside the cell
+                    dx0 = cx - (len(cols) * step - step + 7) / 2
+                    for j, col in enumerate(cols):
+                        draw.ellipse([dx0 + j * step, yy + th + 5, dx0 + j * step + 7, yy + th + 12], fill=col,
+                                     outline=chip_ring(col), width=1)
                 else:
                     draw.rectangle([cx + tw / 2 + 2, yy + 1, cx + tw / 2 + 4, yy + 3], fill=BLACK)
         yy += rh
@@ -795,7 +805,7 @@ def _with_school_husk(days, data, skip):
 def _weather_strip(img, draw, x, y, w, bottom, days):
     """Next five days: weekday, icon, max/min. Returns y after."""
     days = [d for d in days if d.get("weather")][:5]
-    if not days or bottom - y < 78:
+    if not days or bottom - y < 28 + 78:     # heading + labels, icons, max and min
         return y
     fh = f_bold(15)
     draw_text_top(draw, (x, y + 2), "Været", fh, BLACK)
@@ -827,6 +837,7 @@ def render(data, opts=None):
       evening_upcoming - keep «Kommer» in the evening instead of electricity (Tibber)
       energy_allday    - show electricity instead of «Kommer» all day, not only in the evening
       school    - 'Skoledag' box (timetable from the weekly letters) under a smaller month (month_column)
+      month_classic - the white-side month shows the calendar month instead of five weeks from this week
     """
     import os
     if opts is None:
@@ -894,6 +905,7 @@ def render(data, opts=None):
     # possible), then the month calendar, then "I morgen" - each only if it fits.
     reserve = 0
     month_white = opts.get("month_right") or opts.get("month_column")
+    rolling = not opts.get("month_classic")     # five weeks from this week, unless the calendar month is chosen
     if opts.get("month") and not month_white:
         scratch = Image.new("RGB", (W, H), WHITE)
         y_full = _today(scratch, ImageDraw.Draw(scratch), days[0], "", battery=None, banner=banner,
@@ -929,12 +941,12 @@ def render(data, opts=None):
         # the whole right column is a large month calendar; the day list uses the left column
         # (a smaller one on school days when the 'Skoledag' box is on)
         mh = _month_light(img, draw, data["today"], days, cols[1], 8, col_w, big=not school_rows,
-                          mid=bool(school_rows))
+                          mid=bool(school_rows), rolling=rolling)
         below = (cols[1], 8 + mh + 10)
         cols, bottoms = cols[:1], bottoms[:1]
     elif opts.get("month_right"):
-        _w, _r, mh = _light_month_metrics(data["today"], False)
-        _month_light(img, draw, data["today"], days, cols[1], H - mh - 4, col_w)
+        _w, _r, mh = _light_month_metrics(data["today"], False, rolling=rolling)
+        _month_light(img, draw, data["today"], days, cols[1], H - mh - 4, col_w, rolling=rolling)
         bottoms[1] = H - mh - 12
     col_i, y = 0, 8
     last_shown = None

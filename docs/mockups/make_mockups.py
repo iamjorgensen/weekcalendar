@@ -21,6 +21,16 @@ from designs import dense  # noqa: E402
 from designs.adapter import to_design_data  # noqa: E402
 
 OUT = os.path.join(ROOT, "docs", "images")
+# Icons that are not bundled are downloaded on demand, as on the frame (git-ignored cache)
+ICON_CACHE = os.path.join(ROOT, "docs", "mockups", ".icon-cache")
+os.makedirs(ICON_CACHE, exist_ok=True)
+os.environ.setdefault("ICONS_CACHE_DIR", ICON_CACHE)
+try:
+    from designs.common import set_icon_manager  # noqa: E402
+    from inky_icons_package import IconManager  # noqa: E402
+    set_icon_manager(IconManager(cache_dir=os.environ["ICONS_CACHE_DIR"]))
+except Exception as e:      # no network or no resvg: bundled icons and old PNGs only
+    print("icon downloads off:", e)
 OSLO = ZoneInfo("Europe/Oslo")
 NOW = datetime(2026, 11, 17, 6, 47, tzinfo=OSLO)   # a Tuesday morning
 
@@ -48,7 +58,7 @@ EVENTS = [ev(i, "", "Juleverksted", "gift", [NORA]) for i in range(0, 4)] + [
     ev(0, "17:30", "Korpsøvelse", "music", [NORA]),
     ev(1, "", "Restavfall", "trash-2"),
     ev(1, "13:20", "Skoleslutt 13:20", None, [EMIL]),
-    ev(1, "17:00", "Svømming", "droplet", [OSKAR]),
+    ev(1, "17:00", "Svømming", "waves", [OSKAR]),
     ev(2, "", "Papir og plast", "trash-2"),
     ev(2, "18:00", "Foreldremøte 4A", None, [EMIL]),
     ev(2, "19:45", "Håndballtrening G12", "volleyball", [OSKAR]),
@@ -58,14 +68,14 @@ EVENTS = [ev(i, "", "Juleverksted", "gift", [NORA]) for i in range(0, 4)] + [
     ev(4, "15:00", "Bursdag Ida (8 år)", "cake", [EMIL]),
     ev(5, "12:00", "Skøyteskole", "skate", [NORA]),
     ev(6, "08:30", "Gym", "gymnastics", [EMIL]),
-    ev(6, "17:00", "Svømming", "droplet", [OSKAR]),
+    ev(6, "17:00", "Svømming", "waves", [OSKAR]),
     ev(7, "", "Kari 40 år", "cake", [KARI]),
     ev(8, "", "Restavfall", "trash-2"),
     ev(8, "18:00", "Korpsøvelse", "music", [NORA]),
     ev(9, "19:45", "Håndballtrening G12", "volleyball", [OSKAR]),
     ev(10, "18:00", "Juleavslutning SFO", "star", [EMIL]),
     ev(12, "11:00", "Skøyteskole", "skate", [NORA]),
-    ev(13, "17:00", "Svømming", "droplet", [OSKAR]),
+    ev(13, "17:00", "Svømming", "waves", [OSKAR]),
 ]
 
 COND = ["Skyet", "Lett snø", "Delvis skyet", "Klart", "Delvis skyet", "Skyet", "Regn", "Skyet", "Snø",

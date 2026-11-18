@@ -419,4 +419,4 @@ def test_energy_box_labels_nettleie():
     opts = {"month_column": True, "upcoming": True, "evening": True}
     a = dense.render(dict(base, energy=dict(energy, year_cost=dict(energy["year_cost"], nettleie=True))), opts)
     b = dense.render(dict(base, energy=energy), opts)
-    assert a.crop((551, 380, 700, 400)).tobytes() != b.crop((551, 380, 700, 400)).tobytes()
+    assert a.crop((551, 250, 800, 480)).tobytes() != b.crop((551, 250, 800, 480)).tobytes()
