@@ -413,7 +413,7 @@ def _month(draw, today, event_dates, top):
 def _light_month_metrics(today, big, mid=False):
     import calendar
     weeks = len(calendar.Calendar(0).monthdatescalendar(today.year, today.month))
-    rh = 40 if big else 24 if mid else 16
+    rh = 40 if big else 22 if mid else 16
     return weeks, rh, 26 + 18 + weeks * rh + 6
 
 
@@ -695,7 +695,7 @@ def _school(img, draw, x, y, w, bottom, rows, title):
             if note and y + 17 <= bottom:
                 draw_text_top(draw, (x + 22, y), ellipsize(draw, note, ft, w - 22), ft, BLACK)
                 y += 17
-            y += 8
+            y += 6
             continue
         # right-aligned: 09:00  [food] 10:50  14:45  - the end inverted when earlier than usual
         xr = x + w
@@ -730,8 +730,8 @@ def _school(img, draw, x, y, w, bottom, rows, title):
             paste_icon(img, SCHOOL_ICONS.get(kind, "bell"), x + 22, y - 1, 14, BLACK)
             draw_text_top(draw, (x + 40, y), ellipsize(draw, text, ft, w - 40), ft, BLACK)
             y += 17
-        y += 8
-    return y + 4
+        y += 6
+    return y + 2
 
 
 SCHOOL_ICONS = {"trip": "map", "gym": "gymnastics", "bring": "shopping-bag"}
