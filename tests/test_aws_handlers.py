@@ -560,6 +560,12 @@ def test_render_syncs_calendar_feeds_then_throttles(aws, monkeypatch):
             pass
     monkeypatch.setattr(requests, "get", lambda url, **kw: (fetched.append(url), R())[1])
     monkeypatch.setattr(cs, "session_from_service_account", lambda info: session)
+
+    class FixedDT(render_handler.datetime):   # the ICS fixture's match is on 2026-11-17
+        @classmethod
+        def now(cls, tz=None):
+            return render_handler.datetime(2026, 11, 17, 8, 0, tzinfo=tz)
+    monkeypatch.setattr(render_handler, "datetime", FixedDT)
     errors = []
     first = render_handler.sync_calendar_feeds(s3, BUCKET, errors)
     assert errors == [] and fetched == ["https://ics.example.com/norway.ics"]
