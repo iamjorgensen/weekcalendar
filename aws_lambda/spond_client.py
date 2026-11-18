@@ -74,12 +74,15 @@ def my_member_ids(token, group_list=None):
 
 
 def unanswered(spond_events, members, now=None, days=14):
-    """Events in the next `days` days that one of us has not answered: [{start, title, who}]."""
+    """Events in the next `days` days that one of us has not answered (and could: the invite is out): [{start, title, who}]."""
     now = now or datetime.now(timezone.utc)
     out = []
     for e in spond_events or []:
         start = _ts(e.get("startTimestamp"))
         if not start or e.get("cancelled") or not (now <= start <= now + timedelta(days=days)):
+            continue
+        invite = _ts(e.get("inviteTime"))
+        if invite and invite > now:   # invitation not sent yet, so nobody can answer it
             continue
         ids = set((e.get("responses") or {}).get("unansweredIds") or []) & set(members)
         if ids:
