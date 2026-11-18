@@ -135,6 +135,9 @@
       <h2>Siste brev lest</h2>
       <div class="card" id="ai-cost"></div>
       <div class="card" id="letters"></div>
+      <h2>Skoledag fra ukebrevene</h2>
+      <p class="hint">Det som er lagret for rammen (ikke Google Kalender): timeplan per dag og det som bare vises i «Skoledag» og «Husk denne uka». De to siste ukene per barn.</p>
+      <div class="card" id="school"></div>
       <button class="btn" onclick="renderNow()">Lag nytt bilde nå</button>
     </section>
 
@@ -392,6 +395,7 @@ async function loadStatus() {
       <div>${esc(l.message)}</div><div class="small muted">${esc(new Date(l.at * 1000).toLocaleString("no", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}${l.usage
         ? " · " + esc(`${modelName(l.usage.model)}, ${fmtTokens(l.usage.input_tokens)} inn / ${fmtTokens(l.usage.output_tokens)} ut${l.usage.usd != null ? ", " + fmtCost(l.usage.usd) : ""}`) : ""}</div></div></div>`).join("")
       : `<div class="muted small">Ingen brev lest ennå.</div>`;
+    $("#school").innerHTML = schoolHtml(j.timetable || {});
     const months = Object.entries((j.ai_usage && j.ai_usage.months) || {}).sort().reverse();
     const sum = months.reduce((a, [, m]) => ({ usd: a.usd + (m.usd || 0), letters: a.letters + (m.letters || 0) }), { usd: 0, letters: 0 });
     $("#ai-cost").innerHTML = months.length ? `
@@ -403,6 +407,25 @@ async function loadStatus() {
     const p = await api("/api/preview");
     if (p.ok) $("#preview").src = URL.createObjectURL(await p.blob());
   } catch (e) { /* status is best-effort */ }
+}
+
+const WD = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
+function schoolHtml(tt) {
+  const kids = Object.entries(tt).filter(([, w]) => w && typeof w === "object");
+  if (!kids.length) return `<div class="muted small">Ingen timeplan lagret ennå. Last opp et ukebrev.</div>`;
+  return kids.map(([child, weeks]) => Object.keys(weeks).sort().reverse().slice(0, 2).map((wk) => {
+    const w = Array.isArray(weeks[wk]) ? { days: weeks[wk], items: [] } : weeks[wk];
+    const days = (w.days || []).map((d) => `<div class="row space small"><span style="min-width:34px">${WD[d.weekday] || "?"}</span>
+      <span style="flex:1">${d.closed ? `<span style="color:#c62828">Fri</span> ${esc(d.note || "")}`
+        : esc([[d.start, d.end].filter(Boolean).join("–"), d.lunch ? "mat " + d.lunch : ""].filter(Boolean).join(" · "))
+          + `<br><span class="muted">${esc((d.lessons || []).join(" · "))}</span>`}</span></div>`).join("");
+    const items = (w.items || []).map((i) => {
+      const dt = new Date(i.date + "T12:00"); const wd = WD[(dt.getDay() + 6) % 7];
+      return `<div class="small">${esc(wd)}: ${esc(i.title)} <span class="muted">(${esc(i.kind)})</span></div>`; }).join("");
+    return `<div class="list-item"><div style="flex:1"><b>${esc(child)}</b> <span class="muted">uke ${esc(String(+wk.split("-W")[1]))}</span>
+      ${days || `<div class="muted small">Ingen timeplan i brevet</div>`}
+      ${items ? `<div style="margin-top:6px"><div class="small muted">Bare på rammen:</div>${items}</div>` : ""}</div></div>`;
+  }).join("")).join("");
 }
 
 async function testTibber() {

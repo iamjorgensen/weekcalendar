@@ -126,7 +126,10 @@ def test_admin_status_preview_and_render(served, fake_lambda):
     s3.put_object(Bucket=BUCKET, Key="log/letters.json", Body=json.dumps([{"at": 1, "message": "La til 6"}]).encode())
     st = json.loads(_api("/api/status")["body"])
     assert st["meta"]["event_count"] == 3 and st["letters"][0]["message"] == "La til 6"
-    assert st["ai_usage"] == {}
+    assert st["ai_usage"] == {} and st["timetable"] == {}
+    s3.put_object(Bucket=BUCKET, Key="log/timetable.json",
+                  Body=json.dumps({"Amalie": {"2026-W47": {"days": [{"weekday": 0, "end": "14:45"}], "items": []}}}).encode())
+    assert json.loads(_api("/api/status")["body"])["timetable"]["Amalie"]["2026-W47"]["days"][0]["end"] == "14:45"
     prev = _api("/api/preview")
     assert prev["statusCode"] == 200 and prev["isBase64Encoded"] and base64.b64decode(prev["body"])[:4] == b"\x89PNG"
     r = _api("/api/render", "POST")
