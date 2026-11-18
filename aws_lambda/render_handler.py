@@ -180,7 +180,7 @@ SPOND_PENDING_KEY = CACHE_PREFIX + "spond_pending.json"
 FRAME_SEEN_KEY = CACHE_PREFIX + "frame_seen.json"
 # Bump when the way feed events are written changes, so the next render re-syncs
 # (and corrects existing events) instead of waiting for FEED_SYNC_HOURS.
-FEEDS_CODE_VERSION = "7"   # 4: Spond
+FEEDS_CODE_VERSION = "8"   # 4: Spond, 8: skip Spond events not yet invited
 FEED_SYNC_HOURS = float(os.environ.get("FEED_SYNC_HOURS", "6"))
 
 
