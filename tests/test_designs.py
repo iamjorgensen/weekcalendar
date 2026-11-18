@@ -247,6 +247,6 @@ def test_school_box_under_a_smaller_month(monkeypatch):
     assert img.size == (800, 480) and len(img.getcolors(1 << 24)) <= 6
     rows, title = seen[-1]
     assert title == "Skoledag i dag" and rows[0]["lessons"][0] == "Norsk" and rows[0]["lunch"] == "10:50"
-    assert sizes[-1] == {"big": False, "mid": True}
+    assert sizes[-1]["big"] is False and sizes[-1]["mid"] is True
     dense.render(dd, {"month_column": True, "husk": True})          # option off: the big month as before
-    assert sizes[-1] == {"big": True, "mid": False}
+    assert sizes[-1]["big"] is True and sizes[-1]["mid"] is False

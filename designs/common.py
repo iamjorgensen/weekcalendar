@@ -40,17 +40,23 @@ def font(name: str, size: int) -> ImageFont.FreeTypeFont:
     return _font_cache[key]
 
 
-# Font roles. Change here to try other faces everywhere at once.
+# Font roles: one family (Roboto). Small text is set in Bold so thin strokes hold up
+# on the panel; larger body text uses SemiBold.
 def f_body(size=17):
-    return font("Roboto-SemiBold.ttf", size)
+    return font("Roboto-Bold.ttf" if size <= 14 else "Roboto-SemiBold.ttf", size)
 
 
 def f_bold(size=17):
-    return font("NotoSans-Bold.ttf", size)
+    return font("Roboto-Bold.ttf", size)
 
 
 def f_tiny(size=13):
-    return font("Roboto-SemiBold.ttf", size)
+    return font("Roboto-Bold.ttf" if size <= 14 else "Roboto-SemiBold.ttf", size)
+
+
+def f_light(size=15):
+    """The lighter weight, e.g. for days that are already past."""
+    return font("Roboto-Regular.ttf", size)
 
 
 def text_w(draw, text, fnt):
@@ -281,16 +287,24 @@ def weather_icon_name(symbol):
     return "cloud"
 
 
+def chip_ring(color, bg=WHITE):
+    """Ring colour so a chip or dot holds on its background: black around yellow/green on white,
+    white around blue/red/black on black. None when no ring is needed."""
+    if bg == BLACK:
+        return WHITE if color in (BLUE, RED, BLACK) else None
+    return BLACK if color in (YELLOW, GREEN, WHITE) else None
+
+
 def person_chip(draw, x, cy, letter, color, d=20, bg=WHITE):
     """Coloured circle with an initial, vertically centred on cy. Returns width."""
     r = d // 2
-    outline = WHITE if color == bg == BLACK or (color == BLACK and bg == BLACK) else None
-    draw.ellipse([x, cy - r, x + d, cy + r], fill=color, outline=outline, width=2 if outline else 0)
+    ring = chip_ring(color, bg)
+    draw.ellipse([x, cy - r, x + d, cy + r], fill=color, outline=ring, width=1 if ring else 0)
     fg = BLACK if color in (YELLOW, GREEN, WHITE) else WHITE
-    f = f_bold(13)
+    f = f_bold(13 if d >= 17 else 12)
     tw = text_w(draw, letter, f)
     ch = cap_height(draw, f)
-    draw_text_top(draw, (x + r - tw / 2, cy - ch / 2), letter, f, fg)
+    draw_text_top(draw, (x + r - tw / 2 + 0.5, cy - ch / 2), letter, f, fg)
     return d
 
 

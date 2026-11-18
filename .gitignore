@@ -34,3 +34,6 @@ frame/secrets.py
 
 # frame secrets (Wi-Fi password, frame token)
 secrets.py
+
+# icons downloaded while rendering the README mockups
+docs/mockups/.icon-cache/

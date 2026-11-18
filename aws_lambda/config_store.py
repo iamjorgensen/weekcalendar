@@ -30,7 +30,8 @@ HISTORY_PREFIX = "config/history/"
 COLORS = ["BLACK", "RED", "GREEN", "BLUE", "YELLOW"]
 KINDS = ["barn", "voksen", "dyr", ""]
 VIEW_OPTIONS = ["collapse", "month", "month_right", "month_column", "husk", "upcoming", "weather5",
-                "tomorrow", "evening", "advice", "morning", "evening_upcoming", "energy_allday", "school"]
+                "tomorrow", "evening", "advice", "morning", "evening_upcoming", "energy_allday", "school",
+                "month_classic"]   # month_classic: the calendar month instead of five weeks from this week
 AI_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
 DEFAULT_AI = {"model": "claude-sonnet-5-5"}
 DEFAULT_VIEW = {"options": ["collapse", "month_column", "upcoming", "tomorrow", "evening", "advice"],
