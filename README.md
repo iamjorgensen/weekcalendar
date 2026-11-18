@@ -41,9 +41,9 @@ Settings are managed from a web page on your phone.
 
 **Morning (the 04:00 update)**
 
-- **The black panel** is today: the date, week number, today's weather and the morning, day and evening temperature, plus clothing advice ("Klær: vinterdress, lue og votter · Glatt?"). Below that come all of today's events. If they fit, tomorrow's events are shown too ("I morgen").
-- **The middle column** is the coming days. Each day has its weather, waste pickup (bin icon) and events. Every event carries coloured badges showing who it is for. Days with nothing on say "Ingen avtaler". Red days are weekends, public holidays and days off from school.
-- **The right column** is a large month calendar with week numbers. A coloured dot under a date means someone has something that day. Below it, "Kommer" lists what follows after the days shown.
+- **The black panel** is today: the date, week number, today's weather (temperature, wind, and precipitation when there is any), the morning, day and evening temperature, plus clothing advice ("Vinterdress, lue og votter · Glatt?"). Below that come all of today's events. If they fit, tomorrow's events are shown too ("I morgen").
+- **The middle column** is the coming days. Each day starts with a line and its heading ("Tor 19. nov"), waste pickup as a small bin tag, and the weather; rain of 1 mm or more is shown in blue. Each event is one row: the time, an icon and the title, so the titles line up; all-day events start at the left edge. Every event carries coloured badges showing who it is for. Days with nothing on say "Ingen avtaler". Red days are weekends, public holidays and days off from school.
+- **The right column** is a large month calendar with week numbers: five weeks starting with the current week ("November – desember"), so no rows are spent on weeks that are over. Days already past this week are lighter, and the first of the next month gets a small month label. (The whole calendar month can be chosen instead on the admin page.) A coloured dot under a date means someone has something that day. Below it, "Kommer" lists what follows after the days shown.
 
 **Evening (the 17:30 update)**
 
@@ -54,7 +54,7 @@ After 17:00 the big panel switches to **tomorrow** ("I morgen"), with tomorrow's
 **Other features**
 
 - **Shortened repeats:** an all-day event that repeats is shown once, as "Juleverksted (tir–fre)", instead of on every day.
-- **Days off:** red dates. Norwegian public holidays (with a flag) are calculated in code every year, Easter and Pentecost included; julaften and nyttårsaften can be switched on or off on the admin page. School holidays and days off (with a beach umbrella) come from the school calendar you send in (see [school letters](#6-send-school-letters-from-your-phone)).
+- **Days off:** red dates. Norwegian public holidays (with a flag) are calculated in code every year, Easter and Pentecost included; julaften and nyttårsaften can be switched on or off on the admin page. School holidays and days off (with a palm tree) come from the school calendar you send in (see [school letters](#6-send-school-letters-from-your-phone)).
 - **Battery level:** shown in the corner. The frame measures it and sends it along with its next request.
 - **Birthdays and special days:** see below.
 - **Layouts:** different layouts can be chosen on the admin page. For example, here the month calendar is replaced by more days:
@@ -247,11 +247,11 @@ Open `https://<id>.lambda-url.eu-west-1.on.aws/admin` on your phone and log in w
 
 | Tab | What you set there |
 |---|---|
-| **Status** | The picture currently on the frame; a preview of any date ("Forhåndsvis en dato", for example julaften or a birthday); when the frame last checked in; when it was made; battery level; how many events were found; one line per subscribed calendar or Spond group (found / new / changed / deleted, or the error); the last school letters read; a "Lag nytt bilde nå" button to make a new picture. |
+| **Status** | At the top, one line that says "Alt i orden" or what needs attention (low battery, a calendar that did not sync, an old picture, a frame that has not checked in, errors). Then the picture currently on the frame; a preview of any date ("Forhåndsvis en dato", for example julaften or a birthday); when the frame last checked in; when it was made; battery level; how many events were found; one row per subscribed calendar or Spond group with a status dot and the last result ("tir. 06:37 · 2 nye, 1 slettet", or the error); the last school letters read; a "Lag nytt bilde nå" button to make a new picture. |
 | **Familie** | Each person's name, letter, colour, birthday, name day and the words that refer to them; the weekly rota ("Ukas oppgaver") and yearly dates ("Merkedager"). Pets can be added as type "dyr". For children, the school grade and groups ("gruppe Sild"), which help Claude work out who a letter is about. Grades are set for a school year and move up automatically every August. |
-| **Regler** | Keyword rules, such as "korps" → music icon + Nora, or "middag:" → food icon. |
+| **Regler** | Keyword rules, such as "korps" → music icon + Nora, or "svømming" → waves icon. Icon names are [Lucide](https://lucide.dev/icons) names, plus `skate`, `gymnastics` and `soccer`, which were drawn for this project. |
 | **Abonnement** | Calendar feeds (any `.ics` address), Spond groups, and a clean-up tool for events left behind by other calendar syncs. |
-| **Visning** | Layout options (see [Display options](#display-options)), birthdays and special days on or off, red public holidays (and julaften / nyttårsaften), when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
+| **Visning** | Layout options (see [Display options](#display-options)), including whether the month calendar shows five weeks from this week or the whole calendar month, birthdays and special days on or off, red public holidays (and julaften / nyttårsaften), when evening mode starts, how many days to fetch, and which AI model reads letters (Haiku, Sonnet or Opus). |
 
 Every save keeps the previous version in `config/history/` in S3.
 
@@ -323,11 +323,14 @@ Chosen on the **Visning** tab of the admin page. They can also be set as the `De
 | `advice` | Clothing advice based on the temperature, precipitation and wind for the day. |
 | `month_column` | A large month calendar with week numbers and person dots fills the right column. |
 | `month` / `month_right` | A small month calendar, in the black panel or bottom right. |
+| `month_classic` | The month calendar on the white side (`month_column`, `month_right`) shows the calendar month instead of five weeks starting with the current week (the default). |
 | `upcoming` | Below the large month calendar: "Kommer", the events after the days shown. |
 | `husk` | Below the month calendar: "Husk denne uka" reminders and the next waste pickup. |
 | `weather5` | Below the month calendar: the weather for the next five days. |
 | `morning` | Day headings show the 08:00 temperature instead of the day's maximum. |
 | `moments` | Birthday and holiday banners, countdowns and small reminders (on by default; switch on the admin page). |
+
+**Icons** are outline icons from [Lucide](https://lucide.dev) (ISC licence, see `assets/icons/LICENSE-lucide.txt`), drawn from SVG at the size they are shown, with lines of 1.5 px below 20 px and 2 px from 20 px. The weather icons and a few others are bundled in `assets/icons/`; any other Lucide name used in a rule, a feed or picked by the AI is downloaded on first use (lucide-static, pinned to 0.460.0) and cached. Unknown names fall back to the older PNG icons, or no icon. Older names still work: `school` shows `graduation-cap` and `umbrella_beach` shows `tree-palm`.
 
 The default design is `dense`. The `designs/` folder also has `hero`, `agenda` and `band`, which can be chosen with the `Design` stack parameter.
 
@@ -383,6 +386,7 @@ aws_lambda/            Lambda handlers: serve (Function URL, admin API), render,
 school/                School letters: extract.py (Claude prompt + schema), calendar_sync.py,
                        feeds.py (ICS / Spond -> family calendar)
 designs/               Image designs (dense, hero, agenda, band), adapter.py, common.py
+assets/                Fonts (Roboto) and icons (bundled Lucide SVGs, three custom SVGs, older PNGs)
 data_provider.py       Fetches calendar, holidays, waste pickup and weather; keyword -> icon/badge mapping
 weather_provider.py    MET Norway (yr.no) forecasts
 main.py                Renders the picture (called by the render function)
