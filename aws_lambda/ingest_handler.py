@@ -104,9 +104,9 @@ def _log_letter(s3, bucket, message, key, usage=None):
         logger.exception("Could not write letters log")
 
 
-def _store_timetable(s3, bucket, child, week, days):
-    """Add this week's timetable for `child` to school/timetable.json (best effort)."""
-    if not days:
+def _store_timetable(s3, bucket, child, week, days, items=()):
+    """Save this week's timetable and school items for `child` in log/timetable.json (best effort)."""
+    if not days and not items:
         return
     from school import timetable
     try:
@@ -114,7 +114,7 @@ def _store_timetable(s3, bucket, child, week, days):
             store = json.loads(s3.get_object(Bucket=bucket, Key=timetable.KEY)["Body"].read())
         except Exception:
             store = {}
-        store = timetable.merge(store, child, week, days)
+        store = timetable.merge(store, child, week, days, items)
         s3.put_object(Bucket=bucket, Key=timetable.KEY, ContentType="application/json",
                       Body=json.dumps(store, ensure_ascii=False).encode("utf-8"))
     except Exception:
@@ -190,9 +190,15 @@ def handler(event, context):
         logger.exception("Extraction failed")
         return _fail(f"Kunne ikke lese dokumentet: {type(e).__name__}: {e}")
 
-    timetable_days = extract.to_timetable(result) if doc_key else []
-    if timetable_days:   # early finishes are shown in the frame's "Skoledag" box, not in Google Calendar
-        items = [i for i in items if i["kind"] != "early_finish"]
+    # Weekly letter: the school day itself (timetable, early finish, turdag, gym, things to bring,
+    # "husk denne uka") is kept for the frame's "Skoledag"/"Husk" boxes; Google Calendar gets only
+    # days off, meetings, deadlines and events.
+    from school import timetable
+    timetable_days, school_items = [], []
+    if doc_key:
+        timetable_days = extract.to_timetable(result)
+        school_items = [i for i in items if i["kind"] in timetable.SCHOOL_KINDS]
+        items = [i for i in items if i["kind"] not in timetable.SCHOOL_KINDS]
     known = {n for n, _ in children}
     for i in items:
         i["for"] = [n for n in i["for"] if n in known]
@@ -220,6 +226,10 @@ def handler(event, context):
     msg = f"La til {created} hendelser for {who}, {what}" if created else f"Ingen nye hendelser {what}"
     if deleted:
         msg += f" (erstattet {deleted} fra før)"
+    if timetable_days or school_items:
+        msg += ". Skoledag på rammen: " + ", ".join(
+            ([f"timeplan {len(timetable_days)} dager"] if timetable_days else [])
+            + ([f"{len(school_items)} påminnelser"] if school_items else []))
     if skipped:
         msg += ". Fantes fra før: " + ", ".join(f"{i['title']} ({i['date'].strftime('%d.%m')})" for i in skipped)
     if past:
@@ -227,8 +237,10 @@ def handler(event, context):
     logger.info("Ingest %s: %s | %s", event.get("key"), msg,
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
     _log_letter(s3, event.get("bucket"), msg, event.get("key"), usage)
-    if doc_key and letter_child:   # the week's timetable for the "Skoledag" box
-        _store_timetable(s3, event.get("bucket"), letter_child, doc_key, timetable_days)
+    if doc_key and letter_child:   # the week's timetable and school items for the frame
+        _store_timetable(s3, event.get("bucket"), letter_child, doc_key, timetable_days,
+                         [{"date": i["date"].isoformat(), "kind": i["kind"], "title": i["title"],
+                           "start": i["start"]} for i in school_items])
     question = (result.get("dinner_question") or "").strip()
     if doc_key and question:       # shown on the frame in the evening that week
         try:

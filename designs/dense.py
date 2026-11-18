@@ -724,8 +724,29 @@ def _school(img, draw, x, y, w, bottom, rows, title):
                 break
             draw_text_top(draw, (x + 22, y), ln, ft, BLACK)
             y += 17
+        for kind, text in r.get("notes", [])[:3]:      # turdag, gym, things to bring
+            if y + 17 > bottom:
+                break
+            paste_icon(img, SCHOOL_ICONS.get(kind, "bell"), x + 22, y - 1, 14, BLACK)
+            draw_text_top(draw, (x + 40, y), ellipsize(draw, text, ft, w - 40), ft, BLACK)
+            y += 17
         y += 8
     return y + 4
+
+
+SCHOOL_ICONS = {"trip": "map", "gym": "gymnastics", "bring": "shopping-bag"}
+
+
+def _with_school_husk(days, data, skip):
+    """The weekly letters' reminders and things to bring (kept out of Google Calendar) added to the
+    days for 'Husk denne uka'; `skip` = the day already shown in the 'Skoledag' box."""
+    if not data.get("timetable") or not days:
+        return days
+    from school.timetable import husk_events
+    start = days[0]["date"]
+    extra = husk_events(data["timetable"], data.get("people") or [], start,
+                        start + timedelta(days=6 - start.weekday()), skip=skip)
+    return [dict(d, events=extra.get(d["date"], []) + d["events"]) if d["date"] in extra else d for d in days]
 
 
 def _weather_strip(img, draw, x, y, w, bottom, days):
@@ -894,7 +915,8 @@ def render(data, opts=None):
         by = _chores(img, draw, bx, by, col_w, H - 6, data.get("chores") or [])
         for key in [k for k in ("husk", "upcoming", "weather5") if opts.get(k)]:
             if key == "husk":
-                by = _husk(img, draw, bx, by, col_w, H - 6, husk_days)
+                by = _husk(img, draw, bx, by, col_w, H - 6,
+                           _with_school_husk(husk_days, data, days[0]["date"] if school_rows else None))
             elif key == "upcoming" and data.get("energy") and not opts.get("evening_upcoming") \
                     and (evening or opts.get("energy_allday")):
                 # evening: electricity and car instead (unless the admin page keeps «Kommer»)

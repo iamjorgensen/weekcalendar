@@ -33,7 +33,7 @@ def test_merge_keeps_newest_weeks_and_replaces_a_week():
         s = timetable.merge(s, "Amalie", f"2026-W{w}", [{"weekday": 0}])
     assert len(s["Amalie"]) == timetable.KEEP_WEEKS and "2026-W44" in s["Amalie"]
     s = timetable.merge(s, "Amalie", "2026-W44", [{"weekday": 1}])
-    assert s["Amalie"]["2026-W44"] == [{"weekday": 1}]
+    assert s["Amalie"]["2026-W44"] == {"days": [{"weekday": 1}], "items": []}
 
 
 def test_rows_for_a_normal_and_an_early_day():
@@ -71,3 +71,31 @@ def test_fallback_skips_old_weeks_and_one_off_closures():
     # last week's Thursday was a one-off closure: no row, rather than "Fri" again
     assert timetable.day_rows(store(), PEOPLE, day(date(2026, 11, 26))) == []
     assert timetable.day_rows(store(), PEOPLE, day(date(2026, 12, 21))) == []               # > 3 weeks old
+
+
+ITEMS = [{"date": "2026-11-16", "kind": "gym", "title": "Fysak – husk gymtøy", "start": ""},
+         {"date": "2026-11-17", "kind": "trip", "title": "Turdag – husk vedkubbe, vannflaske", "start": ""},
+         {"date": "2026-11-18", "kind": "early_finish", "title": "Slutt 12:15", "start": "12:15"},
+         {"date": "2026-11-16", "kind": "bring", "title": "Husk denne uka: skiftetøy og innesko", "start": ""}]
+
+
+def test_letter_items_become_notes_and_early_finish():
+    s = timetable.merge({}, "Amalie", "2026-W47", extract.to_timetable(UKE47), ITEMS)
+    mon = timetable.day_rows(s, PEOPLE, day(date(2026, 11, 16)))[0]
+    assert mon["notes"] == [("gym", "Fysak – husk gymtøy")]          # the weekly reminder is not a note
+    wed = timetable.day_rows(s, PEOPLE, day(date(2026, 11, 18)))[0]
+    assert wed["end"] == "12:15" and wed["early"] and wed["notes"] == []
+    # no timetable this week: a row with just the notes
+    only = timetable.merge({}, "Amalie", "2026-W47", [], ITEMS)
+    tue = timetable.day_rows(only, PEOPLE, day(date(2026, 11, 17)))[0]
+    assert tue["start"] == "" and tue["notes"][0][0] == "trip"
+
+
+def test_husk_events_for_the_rest_of_the_week():
+    s = timetable.merge({}, "Amalie", "2026-W47", [], ITEMS)
+    ev = timetable.husk_events(s, PEOPLE, date(2026, 11, 17), date(2026, 11, 22), skip=date(2026, 11, 17))
+    # Tuesday: the weekly reminder (stored on Monday) but not the turdag shown in the Skoledag box
+    assert [e["title"] for e in ev[date(2026, 11, 17)]] == ["Husk denne uka: skiftetøy og innesko"]
+    assert ev[date(2026, 11, 17)][0]["people"] == [A] and date(2026, 11, 18) not in ev   # early finish: no
+    ev = timetable.husk_events(s, PEOPLE, date(2026, 11, 16), date(2026, 11, 22))
+    assert "Turdag – husk vedkubbe, vannflaske" in [e["title"] for e in ev[date(2026, 11, 17)]]
