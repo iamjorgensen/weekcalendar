@@ -28,6 +28,8 @@ def test_spond_unanswered():
            {"heading": "Trening", "startTimestamp": "2026-11-19T16:00:00Z", "responses": {"acceptedIds": ["M1"]}},
            {"heading": "Avlyst", "cancelled": True, "startTimestamp": "2026-11-20T16:00:00Z",
             "responses": {"unansweredIds": ["M1"]}},
+           {"heading": "Istrening", "startTimestamp": "2026-11-18T16:00:00Z", "inviteTime": "2026-11-18T08:00:00Z",
+            "responses": {"unansweredIds": ["M1"]}},   # invite not sent yet
            {"heading": "Langt fram", "startTimestamp": "2027-01-20T16:00:00Z", "responses": {"unansweredIds": ["M1"]}}]
     out = spond_client.unanswered(evs, {"M1": "Oskar", "M9": "Lars"}, now=now)
     assert out == [{"start": "2026-11-21T10:00:00+00:00", "title": "Kamp mot Sprint", "who": ["Oskar"]}]
