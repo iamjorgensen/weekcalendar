@@ -113,7 +113,7 @@ def restore_caches(s3, bucket):
         for page in paginator.paginate(Bucket=bucket, Prefix=CACHE_PREFIX + "icons/"):
             for obj in page.get("Contents", []):
                 name = obj["Key"].rsplit("/", 1)[-1]
-                if not name.lower().endswith((".svg", ".png")):
+                if not name.lower().endswith((".svg", ".png", ".404")):
                     continue
                 known.add(name)
                 target = os.path.join(icons_dir, name)
@@ -133,7 +133,7 @@ def save_caches(s3, bucket, known_icons):
                 logger.warning("Could not save %s: %s", key, e)
     icons_dir = os.environ["ICONS_CACHE_DIR"]
     for name in sorted(os.listdir(icons_dir)):
-        if name in known_icons or not name.lower().endswith((".svg", ".png")):
+        if name in known_icons or not name.lower().endswith((".svg", ".png", ".404")):
             continue
         try:
             s3.upload_file(os.path.join(icons_dir, name), bucket, CACHE_PREFIX + "icons/" + name)

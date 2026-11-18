@@ -5,6 +5,7 @@ Everything is drawn at the panel's native 800x480 and quantized to the
 six panel colours with no dithering, so what you see is what the panel gets.
 """
 import os
+import re
 from datetime import date
 
 from PIL import Image, ImageDraw, ImageFont
@@ -106,6 +107,7 @@ def wrap(draw, text, fnt, max_w, max_lines):
 
 
 _icon_manager = None
+_icon_cache = {}
 
 # If an icon can't be found or downloaded, try these instead
 ICON_FALLBACK = {
@@ -114,22 +116,99 @@ ICON_FALLBACK = {
     "sunrise": "sun", "sunset": "moon",
 }
 
+# Old icon names (still in stored configs and calendar events) -> the Lucide icon used now.
+# The old name is still tried as a last resort, so its PNG works when offline.
+ICON_ALIASES = {
+    "school": "graduation-cap", "umbrella_beach": "tree-palm", "food": "utensils",
+    "home": "house", "alert-circle": "circle-alert", "check-circle": "circle-check",
+    "x-circle": "circle-x",
+}
+
 
 def set_icon_manager(manager):
     """Optional IconManager (inky_icons_package) used to download missing Lucide icons."""
     global _icon_manager
     _icon_manager = manager
+    _icon_cache.clear()
 
 
-def _find_icon_file(name):
+def _icon_dirs():
     dirs = [ICONS]
     if os.environ.get("ICONS_CACHE_DIR"):
         dirs.append(os.environ["ICONS_CACHE_DIR"])
-    for d in dirs:
-        for ext in (".svg", ".png"):
-            p = os.path.join(d, name + ext)
-            if os.path.isfile(p):
+    return dirs
+
+
+def _find_icon_file(name, ext):
+    for d in _icon_dirs():
+        p = os.path.join(d, name + ext)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _download_svg(name):
+    """Have the IconManager fetch the Lucide SVG into its cache dir. Path or None."""
+    dl = getattr(_icon_manager, "_download_icon", None)
+    if dl is None:
+        return None
+    try:
+        path = dl(name)
+    except Exception:
+        return None
+    return path if path and str(path).endswith(".svg") and os.path.isfile(path) else None
+
+
+_SVG_ROOT = re.compile(r"<svg\b[^>]*>", re.S)
+
+
+def stroke_px(size):
+    """Line width in panel pixels: 1.5 px below 20 px, 2 px from 20 px up, 3 px for the big
+    banner icons (48 px and up), where 2 px looks spindly."""
+    return 3.0 if size >= 48 else 2.0 if size >= 20 else 1.5
+
+
+def fit_stroke(svg, size):
+    """Set the stroke width on the root <svg> so lines land on whole/half pixels at `size`.
+    Only for outline icons (root has a stroke and fill="none"); fill-based artwork is left alone."""
+    m = _SVG_ROOT.search(svg)
+    if not m:
+        return svg
+    root = m.group(0)
+    attr = lambda k: (re.search(r'\s%s="([^"]*)"' % k, root) or [None, None])[1]   # noqa: E731
+    if attr("fill") != "none" or attr("stroke") in (None, "none"):
+        return svg
+    vb = re.search(r'\sviewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)', root)
+    units = float(vb.group(1)) if vb else 24.0
+    sw = stroke_px(size) * units / size
+    new_root = re.sub(r'\sstroke-width="[^"]*"', "", root)
+    new_root = new_root[:-1].rstrip() + f' stroke-width="{sw:.3f}">'
+    return svg[:m.start()] + new_root + svg[m.end():]
+
+
+def render_svg(path, size):
+    import io
+    import resvg_py
+    with open(path, "r", encoding="utf-8") as f:
+        svg = fit_stroke(f.read(), size).replace("currentColor", "#000")
+    return Image.open(io.BytesIO(bytes(resvg_py.svg_to_bytes(svg, width=size, height=size))))
+
+
+def _load_icon(names, size):
+    """SVG (bundled, then cached, then downloaded) before the old PNGs, for each candidate name."""
+    for n in names:
+        p = _find_icon_file(n, ".svg")
+        if p:
+            return p
+    for n in names:
+        if re.fullmatch(r"[a-z0-9-]+", n):
+            p = _download_svg(n)
+            if p:
                 return p
+    for n in names:
+        p = _find_icon_file(n, ".png")
+        if p:
+            return p
     return None
 
 
@@ -138,31 +217,25 @@ def icon(name, size, color=BLACK, _depth=0):
     if not name:
         return None
     name = str(name).strip().lower()
-    path = _find_icon_file(name)
-    path_png = path if path and path.endswith(".png") else ""
-    path_svg = path if path and path.endswith(".svg") else ""
+    key = (name, size, color)
+    if key in _icon_cache:
+        ic = _icon_cache[key]
+        return ic.copy() if ic is not None else None
+    names = [n for n in (ICON_ALIASES.get(name), name) if n]
+    path = _load_icon(names, size)
     im = None
     try:
-        if path_svg and os.path.isfile(path_svg):
-            import io
-            import resvg_py
-            with open(path_svg, "r", encoding="utf-8") as f:
-                svg = f.read()
-            im = Image.open(io.BytesIO(bytes(resvg_py.svg_to_bytes(svg, width=size, height=size))))
-        elif os.path.isfile(path_png):
-            im = Image.open(path_png)
+        if path and path.endswith(".svg"):
+            im = render_svg(path, size)
+        elif path:
+            im = Image.open(path)
     except Exception:
         im = None
-    if im is None and _icon_manager is not None:
-        try:
-            im = _icon_manager.get_icon_image(name, size)  # downloads missing Lucide icons
-        except Exception:
-            im = None
     if im is None:
         alt = ICON_FALLBACK.get(name)
-        if alt and _depth < 2:
-            return icon(alt, size, color, _depth + 1)
-        return None
+        out = icon(alt, size, color, _depth + 1) if alt and _depth < 2 else None
+        _icon_cache[key] = out
+        return out
     im = im.convert("RGBA")
     if im.size != (size, size):
         # scale up or down to fit the box, keeping aspect ratio
@@ -172,7 +245,8 @@ def icon(name, size, color=BLACK, _depth=0):
     alpha = im.split()[3].point(lambda a: 255 if a >= 110 else 0)
     out = Image.new("RGBA", im.size, color + (255,))
     out.putalpha(alpha)
-    return out
+    _icon_cache[key] = out
+    return out.copy()
 
 
 def paste_icon(img, name, x, y, size, color=BLACK):

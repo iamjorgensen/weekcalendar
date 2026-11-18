@@ -2,6 +2,7 @@
 import os
 import io
 import logging
+import re
 import requests
 from PIL import Image
 
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 ICONS_DIR = os.path.join(ASSETS_DIR, "icons")
 
+# Pinned so icon names and shapes do not change underneath us (bundled SVGs are the same version)
+LUCIDE_VERSION = "0.460.0"
+LUCIDE_URL = "https://unpkg.com/lucide-static@{version}/icons/{name}.svg"
+
 class IconManager:
     def __init__(self, icons_dir=None, load_size=24, cache_dir=None):
         self.icons_dir = icons_dir or ICONS_DIR
@@ -29,6 +34,7 @@ class IconManager:
         self.cache_dir = cache_dir or os.environ.get("ICONS_CACHE_DIR") or self.icons_dir
         self.load_size = load_size
         self._icons = {}
+        self._failed = set()     # names whose download failed in this process
 
         for d in {self.icons_dir, self.cache_dir}:
             if not os.path.exists(d):
@@ -77,21 +83,38 @@ class IconManager:
                     self._icons[name] = img
 
     def _download_icon(self, name):
-        """Try to fetch missing icon as SVG from Lucide CDN."""
-        # Replace spaces with hyphens for the URL
+        """Fetch a missing icon as SVG from the Lucide CDN (pinned version) into cache_dir.
+        Returns the file path, or None. A name Lucide does not have (404) is remembered with a
+        '<name>.svg.404' marker, so it is not asked for again on every render; other failures
+        (network) are only remembered for this process."""
         clean_name = name.lower().strip().replace(" ", "-")
-        url = f"https://unpkg.com/lucide-static@latest/icons/{clean_name}.svg"
+        if not re.fullmatch(r"[a-z0-9-]+", clean_name):
+            return None
         target_path = os.path.join(self.cache_dir, f"{clean_name}.svg")
-
+        if os.path.isfile(target_path):
+            return target_path
+        marker = target_path + ".404"
+        if clean_name in self._failed or os.path.isfile(marker):
+            return None
+        url = LUCIDE_URL.format(version=LUCIDE_VERSION, name=clean_name)
         try:
             logger.info(f"Downloading icon: {clean_name}...")
             r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                with open(target_path, "wb") as f:
-                    f.write(r.content)
-                return target_path
         except Exception as e:
             logger.error(f"Download failed for {clean_name}: {e}")
+            self._failed.add(clean_name)
+            return None
+        if r.status_code == 200 and b"<svg" in r.content:
+            with open(target_path, "wb") as f:
+                f.write(r.content)
+            return target_path
+        self._failed.add(clean_name)
+        if r.status_code == 404:
+            try:
+                with open(marker, "w") as f:
+                    f.write(url + "\n")
+            except OSError:
+                pass
         return None
 
     def get_icon_image(self, name, size=None):

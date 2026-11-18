@@ -316,6 +316,9 @@ def bootstrap(sheet_rows=None, children_spec="", school_year=None, feeds_spec=""
 
 
 # ------------------------------------------------------------------ consumers
+SWIM_RE = re.compile(r"sv[øo]m|swim", re.I)
+
+
 def event_mappings(cfg):
     """Config -> rows in the mappings.py / Google Sheet format (keyword, icon, replacement, mode, color)."""
     people = {p["name"].lower(): p for p in cfg.get("people", [])}
@@ -327,6 +330,8 @@ def event_mappings(cfg):
     for r in cfg.get("rules", []):
         p = people.get((r.get("tag") or "").lower())
         icon, remove = r.get("icon", ""), r.get("remove", False)
+        if icon == "droplet" and SWIM_RE.search(r["word"]):
+            icon = "waves"      # older configs: the rain droplet for swimming; droplet now means water
         if icon and p:
             mode = "replace_all" if remove else "add_all"
         elif icon:
