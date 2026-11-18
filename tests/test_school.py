@@ -34,6 +34,18 @@ UKE47 = {
     ],
     "week_reminders": ["skiftetøy og innesko", "gamle bukser/t-skjorter til poser"],
     "dinner_question": "Hvordan finner man arealet av en firkant og trekant?",
+    "timetable": [
+        {"weekday": "Mandag", "start": "09.00", "end": "14.45", "lunch": "10.50",
+         "lessons": ["KRLE", "Fysak / Norsk", "Engelsk"], "closed": False, "note": ""},
+        {"weekday": "Tirsdag", "start": "9:00", "end": "14:45", "lunch": "", "lessons": ["Turdag"],
+         "closed": False, "note": ""},
+        {"weekday": "Onsdag", "start": "09:00", "end": "13:20", "lunch": "10:50",
+         "lessons": ["Norsk", "Fellessamling", "Matte"], "closed": False, "note": ""},
+        {"weekday": "Torsdag", "start": "09:00", "end": "", "lunch": "", "lessons": [], "closed": True,
+         "note": "Kursdag – skole og SFO stengt"},
+        {"weekday": "Fredag", "start": "09:00", "end": "13:40", "lunch": "", "lessons": ["Kunst og håndverk", "Musikk"],
+         "closed": False, "note": ""},
+    ],
 }
 
 

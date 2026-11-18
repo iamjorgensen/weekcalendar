@@ -104,6 +104,23 @@ def _log_letter(s3, bucket, message, key, usage=None):
         logger.exception("Could not write letters log")
 
 
+def _store_timetable(s3, bucket, child, week, days):
+    """Add this week's timetable for `child` to school/timetable.json (best effort)."""
+    if not days:
+        return
+    from school import timetable
+    try:
+        try:
+            store = json.loads(s3.get_object(Bucket=bucket, Key=timetable.KEY)["Body"].read())
+        except Exception:
+            store = {}
+        store = timetable.merge(store, child, week, days)
+        s3.put_object(Bucket=bucket, Key=timetable.KEY, ContentType="application/json",
+                      Body=json.dumps(store, ensure_ascii=False).encode("utf-8"))
+    except Exception:
+        logger.exception("Could not store the timetable")
+
+
 def handler(event, context):
     from school import calendar_sync, extract
 
@@ -207,6 +224,8 @@ def handler(event, context):
     logger.info("Ingest %s: %s | %s", event.get("key"), msg,
                 "; ".join(f"{i['date']}: {i['title']}" for i in new))
     _log_letter(s3, event.get("bucket"), msg, event.get("key"), usage)
+    if doc_key and letter_child:   # the week's timetable for the "Skoledag" box
+        _store_timetable(s3, event.get("bucket"), letter_child, doc_key, extract.to_timetable(result))
     question = (result.get("dinner_question") or "").strip()
     if doc_key and question:       # shown on the frame in the evening that week
         try:

@@ -488,6 +488,10 @@ def test_ingest_end_to_end(aws, monkeypatch):
     assert "Amalie (6. trinn), Sigrid (3. trinn)" in content[1]["text"]
     assert "Foreldremøte 6B" in content[2]["text"]
     assert all(b["summary"].endswith(" Amalie") for b in session.posted)
+    stored = json.loads(s3.get_object(Bucket=BUCKET, Key="log/timetable.json")["Body"].read())
+    week = stored["Amalie"]["2026-W47"]
+    assert [d["end"] for d in week] == ["14:45", "14:45", "13:20", "", "13:40"]
+    assert week[0]["lunch"] == "10:50" and week[3]["closed"] and week[3]["lessons"] == []
 
 
 def test_ingest_reports_missing_settings(aws):

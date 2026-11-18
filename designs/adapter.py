@@ -284,5 +284,5 @@ def to_design_data(data, days=10, now=None, lat=None, lon=None):
             "people": data.get("people") or [], "dinner_question": data.get("dinner_question") or "",
             "warnings": data.get("warnings") or [],
             **{k: data.get(k) for k in ("spond_pending", "countdowns", "chores", "dates", "first_snow", "aurora_kp",
-                                    "energy", "car")
+                                    "energy", "car", "timetable")
                if data.get(k) is not None}}

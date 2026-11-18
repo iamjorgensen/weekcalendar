@@ -227,3 +227,26 @@ def test_month_column_with_husk_upcoming_weather():
         assert img.size == (800, 480) and len(img.getcolors(1 << 24)) <= 6
     assert dense.HUSK_RE.search("Turdag – husk vedkubbe") and dense.HUSK_RE.search("Ta med gamle klær")
     assert not dense.HUSK_RE.search("Huskestue")
+
+
+def test_school_box_under_a_smaller_month(monkeypatch):
+    from designs import dense
+    from school import timetable
+    dd = to_design_data(_data(), days=14, now=NOW)
+    d0 = dd["days"][0]["date"]
+    week = [{"weekday": d0.weekday(), "start": "09:00", "lunch": "10:50", "end": "14:45",
+             "lessons": ["Norsk", "Matte", "Kunst og håndverk", "Engelsk"], "closed": False, "note": ""}]
+    dd["timetable"] = timetable.merge({}, "Amalie", timetable.week_key(d0), week)
+    dd["people"] = [{"name": "Amalie", "letter": "A", "color": "YELLOW"}]
+    seen, sizes = [], []
+    real_school, real_month = dense._school, dense._month_light
+    monkeypatch.setattr(dense, "_school", lambda img, draw, x, y, w, b, rows, title: (
+        seen.append((rows, title)), real_school(img, draw, x, y, w, b, rows, title))[1])
+    monkeypatch.setattr(dense, "_month_light", lambda *a, **k: (sizes.append(k), real_month(*a, **k))[1])
+    img = dense.render(dd, {"month_column": True, "school": True, "husk": True})
+    assert img.size == (800, 480) and len(img.getcolors(1 << 24)) <= 6
+    rows, title = seen[-1]
+    assert title == "Skoledag i dag" and rows[0]["lessons"][0] == "Norsk" and rows[0]["lunch"] == "10:50"
+    assert sizes[-1] == {"big": False, "mid": True}
+    dense.render(dd, {"month_column": True, "husk": True})          # option off: the big month as before
+    assert sizes[-1] == {"big": True, "mid": False}

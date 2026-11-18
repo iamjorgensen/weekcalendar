@@ -410,18 +410,19 @@ def _month(draw, today, event_dates, top):
         y += rh
 
 
-def _light_month_metrics(today, big):
+def _light_month_metrics(today, big, mid=False):
     import calendar
     weeks = len(calendar.Calendar(0).monthdatescalendar(today.year, today.month))
-    rh = 40 if big else 16
+    rh = 40 if big else 24 if mid else 16
     return weeks, rh, 26 + 18 + weeks * rh + 6
 
 
-def _month_light(img, draw, today, days, x, y, w, big=False):
-    """Month calendar on the white side. Big: week numbers and a dot per person with events."""
+def _month_light(img, draw, today, days, x, y, w, big=False, mid=False):
+    """Month calendar on the white side. Big: week numbers and a dot per person with events.
+    Mid: the small one with more space between the weeks (above the 'Skoledag' box)."""
     import calendar
     from designs.common import MONTHS
-    weeks, rh, h = _light_month_metrics(today, big)
+    weeks, rh, h = _light_month_metrics(today, big, mid)
     fh = f_bold(18 if big else 15)
     draw_text_top(draw, (x, y + 2), f"{MONTHS[today.month - 1].capitalize()} {today.year}", fh, BLACK)
     draw.rectangle([x, y + 22, x + w, y + 23], fill=BLACK)
@@ -673,6 +674,60 @@ def _husk(img, draw, x, y, w, bottom, days):
     return y + 6
 
 
+def _school(img, draw, x, y, w, bottom, rows, title):
+    """'Skoledag i dag/i morgen': per child start, lunch and end, then the lessons. Returns y after."""
+    if not rows or bottom - y < 60:
+        return y
+    draw_text_top(draw, (x, y + 2), title, f_bold(15), BLACK)
+    draw.rectangle([x, y + 21, x + w, y + 22], fill=BLACK)
+    y += 30
+    fb, fl, ft = f_bold(15), f_body(14), f_tiny(13)
+    ch = cap_height(draw, fb)
+    for r in rows:
+        if y + 22 > bottom:
+            break
+        person_chip(draw, x, y + ch // 2, r["letter"], r["color"], 17)
+        draw_text_top(draw, (x + 22, y), r["name"], fb, BLACK)
+        if r["off"]:
+            draw_text_top(draw, (x + w - text_w(draw, "Fri", fb), y), "Fri", fb, RED)
+            y += 21
+            note = r["note"] if r["note"] and r["note"].lower() != "fri" else ""
+            if note and y + 17 <= bottom:
+                draw_text_top(draw, (x + 22, y), ellipsize(draw, note, ft, w - 22), ft, BLACK)
+                y += 17
+            y += 8
+            continue
+        # right-aligned: 09:00  [food] 10:50  14:45  - the end inverted when earlier than usual
+        xr = x + w
+        if r["end"]:
+            tw = text_w(draw, r["end"], fb)
+            if r["early"]:
+                draw.rectangle([xr - tw - 6, y - 3, xr, y + ch + 4], fill=BLACK)
+                draw_text_top(draw, (xr - tw - 3, y), r["end"], fb, WHITE)
+                xr -= tw + 6
+            else:
+                draw_text_top(draw, (xr - tw, y), r["end"], fb, BLACK)
+                xr -= tw
+        if r["lunch"]:
+            tw = text_w(draw, r["lunch"], fl)
+            draw_text_top(draw, (xr - 10 - tw, y), r["lunch"], fl, BLACK)
+            paste_icon(img, "food", xr - 10 - tw - 17, y - 2, 15, BLACK)
+            xr -= 10 + tw + 17
+        if r["start"]:
+            sep = "–" if not r["lunch"] and r["end"] else ""
+            t = r["start"] + sep
+            draw_text_top(draw, (xr - (8 if not sep and r["end"] else 0) - text_w(draw, t, fb), y), t, fb, BLACK)
+        y += 21
+        lines = wrap(draw, " · ".join(r["lessons"]), ft, w - 22, 2) if r["lessons"] else []
+        for ln in lines:
+            if y + 17 > bottom:
+                break
+            draw_text_top(draw, (x + 22, y), ln, ft, BLACK)
+            y += 17
+        y += 8
+    return y + 4
+
+
 def _weather_strip(img, draw, x, y, w, bottom, days):
     """Next five days: weekday, icon, max/min. Returns y after."""
     days = [d for d in days if d.get("weather")][:5]
@@ -707,6 +762,7 @@ def render(data, opts=None):
       morning   - day headers show the temperature at 08 instead of the max
       evening_upcoming - keep «Kommer» in the evening instead of electricity (Tibber)
       energy_allday    - show electricity instead of «Kommer» all day, not only in the evening
+      school    - 'Skoledag' box (timetable from the weekly letters) under a smaller month (month_column)
     """
     import os
     if opts is None:
@@ -801,9 +857,15 @@ def render(data, opts=None):
     cols = [left, left + col_w + gap]
     bottoms = [H - 6, H - 6]
     below = None
+    school_rows = []
+    if opts.get("school") and opts.get("month_column") and data.get("timetable"):
+        from school.timetable import day_rows
+        school_rows = day_rows(data["timetable"], data.get("people") or [], days[0])
     if opts.get("month_column"):
         # the whole right column is a large month calendar; the day list uses the left column
-        mh = _month_light(img, draw, data["today"], days, cols[1], 8, col_w, big=True)
+        # (a smaller one on school days when the 'Skoledag' box is on)
+        mh = _month_light(img, draw, data["today"], days, cols[1], 8, col_w, big=not school_rows,
+                          mid=bool(school_rows))
         below = (cols[1], 8 + mh + 10)
         cols, bottoms = cols[:1], bottoms[:1]
     elif opts.get("month_right"):
@@ -827,6 +889,8 @@ def render(data, opts=None):
     if below is not None:
         bx, by = below
         later = [d for d in days if last_shown is None or d["date"] > last_shown]
+        by = _school(img, draw, bx, by, col_w, H - 6, school_rows,
+                     "Skoledag i morgen" if evening else "Skoledag i dag")
         by = _chores(img, draw, bx, by, col_w, H - 6, data.get("chores") or [])
         for key in [k for k in ("husk", "upcoming", "weather5") if opts.get(k)]:
             if key == "husk":

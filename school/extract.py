@@ -59,8 +59,28 @@ SCHEMA = {
         "week_reminders": {"type": "array", "items": {"type": "string"},
                            "description": "Short reminders for the whole week without a specific day"},
         "dinner_question": {"type": "string", "description": "'Middagssamtalen' question if present, else ''"},
+        "timetable": {
+            "type": "array",
+            "description": "The week's timetable (timeplan) for the child's class, one entry per school day "
+                           "Mandag-Fredag that the letter shows; empty if the letter has no timetable",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "weekday": {"type": "string", "enum": WEEKDAYS[:5]},
+                    "start": {"type": "string", "description": "HH:MM the school day starts, or ''"},
+                    "end": {"type": "string", "description": "HH:MM the school day ends ('Slutt 14.45'), or ''"},
+                    "lunch": {"type": "string", "description": "HH:MM the lunch break (spising/lunsj) starts, or ''"},
+                    "lessons": {"type": "array", "items": {"type": "string"},
+                                "description": "Subjects/activities in order, short Norwegian names"},
+                    "closed": {"type": "boolean", "description": "true if there is no school that day"},
+                    "note": {"type": "string", "description": "Why it is closed (short), else ''"},
+                },
+                "required": ["weekday", "start", "end", "lunch", "lessons", "closed", "note"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["doc_type", "week", "year", "grade", "items", "week_reminders", "dinner_question"],
+    "required": ["doc_type", "week", "year", "grade", "items", "week_reminders", "dinner_question", "timetable"],
     "additionalProperties": False,
 }
 
@@ -89,6 +109,7 @@ Regler:
 - Generelle påminnelser for hele uka uten bestemt dag (skiftetøy, innesko) i "week_reminders" (bare ukebrev), korte.
 - Du får en liste over hva som allerede ligger i familiekalenderen. Sett "already_in_calendar" = true når det samme allerede står der samme dag, selv om det er formulert annerledes ("Foreldremøte" = "Foreldremøte 6B kl 18"). Ved tvil: false.
 - Ukenummer og trinn: bare når dokumentet sier det, ellers 0.
+- Timeplan ("timetable", bare ukebrev): har brevet en timeplan for uka, ta med hver skoledag mandag-fredag: når dagen starter (første økt) og slutter ("Slutt 14.45" -> "14:45"), når spisepausen/lunsjen starter ("lunch", tom hvis timeplanen ikke viser den den dagen), og fagene/aktivitetene i rekkefølge med korte navn ("Norsk", "Matte", "Kroppsøving", "Kunst og håndverk", "Turdag"). Hopp over samling, friminutt, spising, lunsj og logg, og slå sammen samme fag rett etter hverandre. "Fysak / Norsk" o.l. for to grupper: bruk barnets gruppe hvis den er kjent, ellers skriv begge. Dager uten skole: "closed" = true og grunnen kort i "note" ("Kursdag – skole og SFO stengt"). Ingen timeplan i brevet: tom liste.
 - Finn aldri på noe som ikke står i dokumentet."""
 
 
@@ -315,6 +336,29 @@ def to_calendar_items(result: dict, today: date, default_for=None):
         raise ExtractError("Fant ingen datoer eller hendelser i dokumentet.")
     doc_key = f"{monday.isocalendar()[0]}-W{week:02d}" if is_week else None
     return doc_key, items
+
+
+def to_timetable(result: dict):
+    """The letter's timetable -> [{weekday 0-4, start, end, lunch, lessons, closed, note}] (cleaned, by weekday)."""
+    import re
+
+    def hhmm(t):
+        m = re.match(r"^\s*(\d{1,2})[.:](\d{2})\s*$", t or "")
+        return f"{int(m.group(1)):02d}:{m.group(2)}" if m and int(m.group(1)) < 24 else ""
+    out = {}
+    for d in result.get("timetable") or []:
+        if d.get("weekday") not in WEEKDAYS[:5]:
+            continue
+        lessons = [str(x).strip()[:30] for x in d.get("lessons") or [] if str(x).strip()][:10]
+        closed = bool(d.get("closed"))
+        if not closed and not lessons and not hhmm(d.get("end")):
+            continue
+        out[WEEKDAYS.index(d["weekday"])] = {
+            "weekday": WEEKDAYS.index(d["weekday"]), "start": "" if closed else hhmm(d.get("start")),
+            "end": "" if closed else hhmm(d.get("end")), "lunch": "" if closed else hhmm(d.get("lunch")),
+            "lessons": [] if closed else lessons,
+            "closed": closed, "note": str(d.get("note") or "").strip()[:60]}
+    return [out[k] for k in sorted(out)]
 
 
 def title_with_names(title, names):

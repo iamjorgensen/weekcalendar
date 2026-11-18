@@ -143,6 +143,7 @@ Resources:
               Resource:
                 - !Sub "${ImageBucket.Arn}/config/*"
                 - !Sub "${ImageBucket.Arn}/log/dinner.json"
+                - !Sub "${ImageBucket.Arn}/log/timetable.json"
             - Sid: ListCache
               Effect: Allow
               Action: s3:ListBucket

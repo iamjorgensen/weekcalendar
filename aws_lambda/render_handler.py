@@ -342,6 +342,8 @@ def add_extras(data, cfg, s3, bucket, today=None, preview=False):
         rows = json.loads(s3.get_object(Bucket=bucket, Key=SPOND_PENDING_KEY)["Body"].read())
         return [r for r in rows if r.get("start", "")[:10] >= today.isoformat()]
     data["spond_pending"] = safe("spond_pending", pending, [])
+    data["timetable"] = safe("timetable", lambda: json.loads(
+        s3.get_object(Bucket=bucket, Key="log/timetable.json")["Body"].read()), {})
     data["countdowns"] = safe("countdowns", lambda: extras.countdowns(
         os.environ.get("API_KEY_GOOGLE"), os.environ.get("CALENDAR_ID"), today), [])
     if cfg is not None:
